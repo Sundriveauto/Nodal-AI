@@ -1,5 +1,5 @@
 # Nodal AI
-
+[![CI](https://github.com/Nodal-stellar/Nodal-AI/actions/workflows/ci.yml/badge.svg)](https://github.com/Nodal-stellar/Nodal-AI/actions/workflows/ci.yml)
 **Modular, production-ready Agent Kit for autonomous PayFi (Payment-Finance) flows on the Stellar Network.**
 
 Nodal AI empowers developers to build autonomous agents capable of handling complex financial interactions. Whether you’re automating cross-border settlements, building machine-to-machine payment gateways, or orchestrating smart contract executions, Nodal AI provides the primitives to do it securely and efficiently on Stellar.
