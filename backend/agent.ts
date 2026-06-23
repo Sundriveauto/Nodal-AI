@@ -10,6 +10,7 @@
  *   - The spending limit is enforced here before delegating to tools.
  */
 
+import { EventEmitter } from "events";
 import { config } from "./config";
 import { StellarPaymentTool } from "./tools/StellarPaymentTool";
 import { SorobanInvokeTool } from "./tools/SorobanInvokeTool";
@@ -51,16 +52,42 @@ function assertWithinSpendingLimit(amount: unknown): void {
 
 // ─── Agent ────────────────────────────────────────────────────────────────────
 
-export class PayFiAgent {
+export class PayFiAgent extends EventEmitter {
   private paymentTool: StellarPaymentTool;
   private sorobanTool: SorobanInvokeTool;
   private x402Tool: X402PaymentTool;
 
+  // Bound handler references kept so destroy() can call .off() with the exact same function
+  // reference — EventEmitter requires identity equality for removal.
+  private readonly _boundHandlers = new Map<string, (...args: unknown[]) => void>();
+
   constructor() {
-    // Pass the secret via agentKeypair() — tools call this internally
+    super();
+
+    // Pass the secret via agentKeypair() — the canonical accessor for the signing key.
     this.paymentTool = new StellarPaymentTool(config.agentKeypair().secret());
     this.sorobanTool = new SorobanInvokeTool(config.agentKeypair().secret());
     this.x402Tool    = new X402PaymentTool(config.agentKeypair().secret());
+
+    // ── Register event listeners — every registration is mirrored in destroy() ──
+    const onError = (err: Error) => {
+      const safe = err.message.replace(/S[A-Z2-7]{55}/g, "[REDACTED]");
+      console.error(`❌ [PayFiAgent] Unhandled agent error: ${safe}`);
+    };
+    const onTaskComplete = (result: AgentResult) => {
+      console.log(`✅ [PayFiAgent] Task complete event: ${result.taskType}`);
+    };
+    const onTaskFailed = (result: AgentResult) => {
+      console.warn(`⚠️  [PayFiAgent] Task failed event: ${result.taskType} — ${result.error}`);
+    };
+
+    this.on("error", onError);
+    this.on("task:complete", onTaskComplete);
+    this.on("task:failed", onTaskFailed);
+
+    this._boundHandlers.set("error", onError as (...args: unknown[]) => void);
+    this._boundHandlers.set("task:complete", onTaskComplete as (...args: unknown[]) => void);
+    this._boundHandlers.set("task:failed", onTaskFailed as (...args: unknown[]) => void);
 
     // Log only safe fields — public key is derived, not the secret
     console.log(`🤖 PayFiAgent initialised`);
@@ -69,6 +96,29 @@ export class PayFiAgent {
     console.log(`   Soroban        : ${config.SOROBAN_RPC_URL}`);
     console.log(`   Agent pubkey   : ${config.AGENT_PUBLIC_KEY}`);
     console.log(`   Spending limit : ${config.AGENT_SPENDING_LIMIT} ${config.X402_ASSET_CODE}`);
+  }
+
+  /**
+   * Detach all registered event listeners and release internal resources.
+   *
+   * Must be called by the lifecycle manager when an agent instance is
+   * decommissioned or stopped. Failure to call destroy() prevents the garbage
+   * collector from reclaiming this instance because EventEmitter holds a strong
+   * reference to every registered callback closure.
+   *
+   * Usage:
+   *   const agent = new PayFiAgent();
+   *   // ... use agent ...
+   *   agent.destroy(); // call when decommissioning
+   */
+  destroy(): void {
+    for (const [event, handler] of this._boundHandlers) {
+      this.off(event, handler);
+    }
+    this._boundHandlers.clear();
+    // Remove any listeners added externally after construction
+    this.removeAllListeners();
+    console.log(`🔴 [PayFiAgent] Destroyed — all event listeners removed.`);
   }
 
   /** Dispatch a task to the correct tool */
@@ -101,13 +151,17 @@ export class PayFiAgent {
       }
 
       console.log(`✅ [Agent] Task completed: ${task.type}`);
-      return { success: true, taskType: task.type, data };
+      const result: AgentResult = { success: true, taskType: task.type, data };
+      this.emit("task:complete", result);
+      return result;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       // Redact anything that looks like a secret key before logging
       const safe = message.replace(/S[A-Z2-7]{55}/g, "[REDACTED]");
       console.error(`❌ [Agent] Task failed: ${task.type} — ${safe}`);
-      return { success: false, taskType: task.type, error: safe };
+      const result: AgentResult = { success: false, taskType: task.type, error: safe };
+      this.emit("task:failed", result);
+      return result;
     }
   }
 }
