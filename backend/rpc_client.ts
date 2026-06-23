@@ -17,7 +17,8 @@ import { config } from "./config";
 async function withRetry<T>(
   fn: () => Promise<T>,
   retries = config.MAX_RETRIES,
-  delayMs = config.RETRY_DELAY_MS
+  delayMs = config.RETRY_DELAY_MS,
+  maxDelayMs = 30_000
 ): Promise<T> {
   let lastErr: unknown;
   for (let attempt = 1; attempt <= retries; attempt++) {
@@ -27,7 +28,12 @@ async function withRetry<T>(
       lastErr = err;
       console.warn(`⚠️  Attempt ${attempt}/${retries} failed:`, (err as Error).message);
       if (attempt < retries) {
-        await new Promise((r) => setTimeout(r, delayMs * attempt)); // exponential back-off
+        // True exponential back-off: 1500 → 3000 → 6000 ms for RETRY_DELAY_MS=1500
+        const exponential = delayMs * Math.pow(2, attempt - 1);
+        const capped = Math.min(exponential, maxDelayMs);
+        // ±20% jitter to prevent thundering herd across simultaneous agent instances
+        const jitter = Math.random() * 0.2 * capped;
+        await new Promise((r) => setTimeout(r, capped + jitter));
       }
     }
   }

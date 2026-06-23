@@ -103,6 +103,9 @@ const EnvSchema = z.object({
   AGENT_SPENDING_LIMIT: SpendingLimitSchema,
 
   // Retry behaviour
+  // Exponential back-off: delay = RETRY_DELAY_MS * 2^(attempt-1), capped at 30 000 ms,
+  // plus ±20% random jitter. Example — MAX_RETRIES=3, RETRY_DELAY_MS=1500 →
+  // delays [1500, 3000, 6000] ms (before jitter), not linear [1500, 3000, 4500].
   MAX_RETRIES: z.coerce
     .number()
     .int()
