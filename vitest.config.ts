@@ -7,7 +7,7 @@ export default defineConfig({
     // Each test file runs in its own isolated context — prevents mock bleed
     isolate: true,
     // Global test timeout (ms) — generous for polling tests
-    testTimeout: 30_000,
+    testTimeout: 15_000,
     // Coverage configuration (used by test:ts:coverage)
     coverage: {
       provider: "v8",

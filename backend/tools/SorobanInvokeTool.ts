@@ -201,7 +201,7 @@ export class SorobanInvokeTool {
   private async pollForConfirmation(
     hash: string,
     maxAttempts = 10,
-    intervalMs = 2000
+    intervalMs = config.RETRY_DELAY_MS * 2
   ): Promise<{ txHash: string }> {
     for (let i = 0; i < maxAttempts; i++) {
       await new Promise((r) => setTimeout(r, intervalMs));

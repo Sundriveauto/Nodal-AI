@@ -249,7 +249,7 @@ describe("SorobanInvokeTool", () => {
       await expect(
         tool.execute({ contractId: VALID_CONTRACT, method: "release", args: [] })
       ).rejects.toThrow(/not confirmed within polling window/);
-    }, 60_000); // generous timeout for polling loop
+    }, 5_000); // RETRY_DELAY_MS=100 → intervalMs=200ms × 10 attempts ≈ 2s
   });
 
   // ── Network error handling ──────────────────────────────────────────────────
