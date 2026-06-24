@@ -7,6 +7,9 @@
 import * as http from "http";
 import { horizonServer } from "./rpc_client";
 import { db } from "./db/client";
+import { createLogger } from "./utils/logger";
+
+const log = createLogger("health-server");
 
 const HEALTH_PATH = "/health";
 
@@ -65,7 +68,7 @@ export function createHealthServer(port = 3001): http.Server {
   });
 
   server.listen(port, () => {
-    console.log(`[HealthServer] Listening on :${port}${HEALTH_PATH}`);
+    log.info({ msg: "Health server listening", port, path: HEALTH_PATH });
   });
 
   return server;

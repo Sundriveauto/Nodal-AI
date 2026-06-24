@@ -7,6 +7,9 @@
 import { PayFiAgent } from "./agent";
 import { createHealthServer } from "./server";
 import { db } from "./db/client";
+import { createLogger } from "./utils/logger";
+
+const log = createLogger("process");
 
 const agent = new PayFiAgent();
 const healthServer = createHealthServer();
@@ -18,11 +21,11 @@ async function shutdown(signal: string): Promise<void> {
   if (isShuttingDown) return;
   isShuttingDown = true;
 
-  console.log(`Graceful shutdown initiated... (${signal})`);
+  log.info({ msg: "Graceful shutdown initiated", signal });
 
   // Hard kill: force exit if shutdown hangs beyond 10 seconds
   const hardKill = setTimeout(() => {
-    console.error("[Shutdown] Hard kill: graceful shutdown exceeded 10s — forcing exit(1)");
+    log.error({ msg: "Hard kill: graceful shutdown exceeded 10s, forcing exit" });
     process.exit(1);
   }, HARD_KILL_MS);
 
@@ -42,10 +45,10 @@ async function shutdown(signal: string): Promise<void> {
     await db.close();
 
     clearTimeout(hardKill);
-    console.log("[Shutdown] All resources released — exiting cleanly.");
+    log.info({ msg: "All resources released, exiting cleanly" });
     process.exit(0);
   } catch (err) {
-    console.error("[Shutdown] Error during shutdown sequence:", err);
+    log.error({ msg: "Error during shutdown sequence", error: err instanceof Error ? err.message : String(err) });
     clearTimeout(hardKill);
     process.exit(1);
   }

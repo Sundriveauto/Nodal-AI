@@ -19,6 +19,9 @@ import {
 import { z } from "zod";
 import { config } from "../config";
 import { loadAccount, submitTransaction } from "../rpc_client";
+import { createLogger } from "../utils/logger";
+
+const log = createLogger("stellar-payment");
 
 // ─── Input schema ─────────────────────────────────────────────────────────────
 
@@ -99,10 +102,13 @@ const tx = txBuilder.setTimeout(30).build();
     // 5. Fee estimation / simulation via Horizon dry-run
     //    (Horizon doesn't expose simulation like Soroban, so we validate
     //     the transaction envelope locally before submission)
-    console.log(` [StellarPaymentTool] Validating payment envelope...`);
-    console.log(`   Source  : ${this.keypair.publicKey()}`);
-    console.log(`   Dest    : ${input.destination}`);
-    console.log(`   Amount  : ${input.amount} ${input.assetCode}`);
+    log.info({
+      msg: "Validating payment envelope",
+      source: this.keypair.publicKey(),
+      destination: input.destination,
+      amount: input.amount,
+      assetCode: input.assetCode,
+    });
 
     // 6. Sign
     tx.sign(this.keypair);

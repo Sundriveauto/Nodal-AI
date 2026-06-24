@@ -5,6 +5,10 @@
  * a close() method called during graceful shutdown.
  */
 
+import { createLogger } from "../utils/logger";
+
+const log = createLogger("database");
+
 export class DatabaseManager {
   private static instance: DatabaseManager | null = null;
   private _isOpen = true;
@@ -26,7 +30,7 @@ export class DatabaseManager {
   /** Flush pending writes and release the connection. */
   async close(): Promise<void> {
     this._isOpen = false;
-    console.log("[DatabaseManager] Connection closed.");
+    log.info({ msg: "Database connection closed" });
   }
 }
 

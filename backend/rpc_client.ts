@@ -13,6 +13,9 @@ import {
 import { ZodError } from "zod";
 import { config } from "./config";
 import { validateXDR } from "./types/xdr";
+import { createLogger } from "./utils/logger";
+
+const log = createLogger("rpc-client");
 
 // ─── Timeout error ────────────────────────────────────────────────────────────
 
@@ -82,7 +85,7 @@ export async function withRetry<T>(
         throw err;
       }
       lastErr = err;
-      console.warn(`[RPC] Request failed. Retrying... (Attempt ${attempt}/${retries}): ${(err as Error).message}`);
+      log.warn({ msg: "Request failed, retrying", attempt, retries, error: (err as Error).message });
       if (attempt < retries) {
         // True exponential back-off: 1500 → 3000 → 6000 ms for RETRY_DELAY_MS=1500
         const exponential = delayMs * Math.pow(2, attempt - 1);
