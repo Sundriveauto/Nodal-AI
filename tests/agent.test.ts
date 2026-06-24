@@ -48,6 +48,62 @@ vi.mock("../backend/config", () => ({
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
+const DEST = "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5";
+const ISSUER = "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN";
+
+describe("PayFiAgent — runSequence", () => {
+  let agent: PayFiAgent;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    agent = new PayFiAgent();
+  });
+
+  it("executes 3 tasks in order and returns all results on success", async () => {
+    const task = {
+      type: "stellar_payment" as const,
+      payload: { destination: DEST, amount: "100", assetCode: "USDC", assetIssuer: ISSUER },
+    };
+    const results = await agent.runSequence([task, task, task]);
+    expect(results).toHaveLength(3);
+    expect(results.every((r) => r.success)).toBe(true);
+  });
+
+  it("stops at task 2 when it fails and does not execute task 3", async () => {
+    const mockInstance = vi.mocked(StellarPaymentTool).mock.results[0].value;
+    mockInstance.execute
+      .mockResolvedValueOnce({ txHash: "hash1", ledger: 1 })
+      .mockRejectedValueOnce(new Error("Network failure"));
+
+    const task = {
+      type: "stellar_payment" as const,
+      payload: { destination: DEST, amount: "100", assetCode: "USDC", assetIssuer: ISSUER },
+    };
+    const results = await agent.runSequence([task, task, task]);
+    expect(results).toHaveLength(2);
+    expect(results[0].success).toBe(true);
+    expect(results[1].success).toBe(false);
+    expect(results[1].error).toContain("Network failure");
+    expect(mockInstance.execute).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects mid-sequence when a task exceeds the mainnet spending cap", async () => {
+    const okTask = {
+      type: "stellar_payment" as const,
+      payload: { destination: DEST, amount: "9999", assetCode: "USDC", assetIssuer: ISSUER },
+    };
+    const overCapTask = {
+      type: "stellar_payment" as const,
+      payload: { destination: DEST, amount: "11000", assetCode: "USDC", assetIssuer: ISSUER },
+    };
+    const results = await agent.runSequence([okTask, overCapTask, okTask]);
+    expect(results).toHaveLength(2);
+    expect(results[0].success).toBe(true);
+    expect(results[1].success).toBe(false);
+    expect(results[1].error).toMatch(/mainnet spending cap/);
+  });
+});
+
 describe("PayFiAgent — mainnet spending cap", () => {
   let agent: PayFiAgent;
 

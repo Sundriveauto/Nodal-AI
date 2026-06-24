@@ -33,37 +33,23 @@ Nodal AI is built on a clean, three-pillar separation of concerns. For a deep di
 ##  Quick Start
 
 1. **Clone & Configure:**
-```bash
-
-```
-
-
-
-git clone https://github.com/your-username/nodal-ai.git
-cd nodal-ai
-cp .env.example .env
-
-# Update AGENT_SECRET_KEY, HORIZON_URL, and SOROBAN_RPC_URL
-
-```
+   ```bash
+   git clone https://github.com/your-username/nodal-ai.git
+   cd nodal-ai
+   cp .env.example .env
+   ```
+   Open `.env` and fill in at minimum `AGENT_SECRET_KEY`, `HORIZON_URL`, `SOROBAN_RPC_URL`, and `X402_ASSET_ISSUER`. See [`.env.example`](./.env.example) for the full list of variables and their descriptions.
 
 2. **Install Dependencies:**
    ```bash
-npm install
-
-```
+   npm install
+   ```
 
 3. **Verify Installation:**
-```bash
-
-```
-
-
-
-npm run build
-npm run test
-
-```
+   ```bash
+   npm run build
+   npm run test
+   ```
 
 ---
 

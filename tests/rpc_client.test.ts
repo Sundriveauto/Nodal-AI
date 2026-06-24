@@ -6,7 +6,14 @@
 
 import { describe, it, expect, vi } from "vitest";
 import { ZodError, z } from "zod";
-import { withRetry, DEFAULT_IS_RETRYABLE } from "../backend/rpc_client";
+import { withRetry, DEFAULT_IS_RETRYABLE, resolveNetworkPassphrase } from "../backend/rpc_client";
+import { Networks } from "@stellar/stellar-sdk";
+
+vi.mock("../backend/utils/logger", () => ({
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+  createLogger: vi.fn(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() })),
+  generateCorrelationId: vi.fn(() => "mock-id"),
+}));
 
 vi.mock("../backend/config", () => ({
   config: {
@@ -20,6 +27,26 @@ vi.mock("../backend/config", () => ({
     RETRY_DELAY_MS: 100,
   },
 }));
+
+// ─── resolveNetworkPassphrase ─────────────────────────────────────────────────
+
+describe("resolveNetworkPassphrase", () => {
+  it("returns Networks.PUBLIC for mainnet", () => {
+    expect(resolveNetworkPassphrase("mainnet")).toBe(Networks.PUBLIC);
+  });
+
+  it("returns Networks.TESTNET for testnet", () => {
+    expect(resolveNetworkPassphrase("testnet")).toBe(Networks.TESTNET);
+  });
+
+  it("returns Networks.FUTURENET for futurenet", () => {
+    expect(resolveNetworkPassphrase("futurenet")).toBe(Networks.FUTURENET);
+  });
+
+  it("throws for an unknown network string", () => {
+    expect(() => resolveNetworkPassphrase("unknown")).toThrow("Unsupported network: unknown");
+  });
+});
 
 // ─── DEFAULT_IS_RETRYABLE ─────────────────────────────────────────────────────
 

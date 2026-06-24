@@ -425,7 +425,90 @@ mod tests {
         assert!(std::format!("{:?}", events).contains("refunded"));
     }
 
-    // 17. get_state returns correct fields after initialize
+    // 17. cancel with both signatures returns funds to depositor
+    #[test]
+    fn test_cancel_with_both_signatures() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let depositor = Address::generate(&env);
+        let recipient = Address::generate(&env);
+        let arbiter = Address::generate(&env);
+        let (token_id, token) = create_token(&env, &depositor);
+        StellarAssetClient::new(&env, &token_id).mint(&depositor, &1_000);
+        let contract_id = env.register_contract(None, EscrowContract);
+        let client = EscrowContractClient::new(&env, &contract_id);
+        client.initialize(
+            &depositor,
+            &recipient,
+            &arbiter,
+            &token_id,
+            &500,
+            &(env.ledger().timestamp() + EXPIRY_OFFSET),
+        );
+        assert_eq!(token.balance(&contract_id), 500);
+        assert_eq!(token.balance(&depositor), 500);
+        client.cancel(&depositor, &arbiter);
+        assert_eq!(token.balance(&depositor), 1_000);
+        assert_eq!(token.balance(&contract_id), 0);
+        assert_eq!(token.balance(&recipient), 0);
+    }
+
+    // 18. cancel without arbiter auth panics
+    #[test]
+    #[should_panic]
+    fn test_cancel_requires_arbiter_auth() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let depositor = Address::generate(&env);
+        let recipient = Address::generate(&env);
+        let arbiter = Address::generate(&env);
+        let (token_id, _) = create_token(&env, &depositor);
+        StellarAssetClient::new(&env, &token_id).mint(&depositor, &1_000);
+        let contract_id = env.register_contract(None, EscrowContract);
+        let client = EscrowContractClient::new(&env, &contract_id);
+        client.initialize(
+            &depositor,
+            &recipient,
+            &arbiter,
+            &token_id,
+            &500,
+            &(env.ledger().timestamp() + EXPIRY_OFFSET),
+        );
+        // Pass depositor in place of arbiter — stored_arbiter != depositor → panics with NotArbiter.
+        // This verifies that the dual-auth check cannot be satisfied with depositor alone.
+        env.as_contract(&contract_id, || {
+            EscrowContract::cancel(env.clone(), depositor.clone(), depositor.clone());
+        });
+    }
+
+    // 19. cancel after release panics
+    #[test]
+    #[should_panic]
+    fn test_cancel_after_release_panics() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let depositor = Address::generate(&env);
+        let recipient = Address::generate(&env);
+        let arbiter = Address::generate(&env);
+        let (token_id, _) = create_token(&env, &depositor);
+        StellarAssetClient::new(&env, &token_id).mint(&depositor, &1_000);
+        let contract_id = env.register_contract(None, EscrowContract);
+        let client = EscrowContractClient::new(&env, &contract_id);
+        client.initialize(
+            &depositor,
+            &recipient,
+            &arbiter,
+            &token_id,
+            &500,
+            &(env.ledger().timestamp() + EXPIRY_OFFSET),
+        );
+        client.release(&arbiter);
+        env.as_contract(&contract_id, || {
+            EscrowContract::cancel(env.clone(), depositor.clone(), arbiter.clone());
+        });
+    }
+
+    // 20. get_state returns correct fields after initialize
     #[test]
     fn test_get_state_after_initialize() {
         let env = Env::default();
