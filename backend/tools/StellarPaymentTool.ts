@@ -9,7 +9,6 @@
 import {
   Keypair,
   Horizon,
-  Networks,
   TransactionBuilder,
   Operation,
   Asset,
@@ -19,7 +18,7 @@ import {
 import { z } from "zod";
 import { config } from "../config";
 import { logger } from "../logger";
-import { loadAccount, submitTransaction } from "../rpc_client";
+import { loadAccount, resolveNetworkPassphrase, submitTransaction } from "../rpc_client";
 import { createLogger } from "../utils/logger";
 
 const log = createLogger("stellar-payment");
@@ -63,12 +62,7 @@ export class StellarPaymentTool {
    */
   constructor(secretKey: string = config.agentKeypair().secret()) {
     this.keypair = Keypair.fromSecret(secretKey);
-    this.networkPassphrase =
-      config.STELLAR_NETWORK === "mainnet"
-        ? Networks.PUBLIC
-        : config.STELLAR_NETWORK === "futurenet"
-        ? Networks.FUTURENET
-        : Networks.TESTNET;
+    this.networkPassphrase = resolveNetworkPassphrase(config.STELLAR_NETWORK);
   }
 
   get publicKey(): string {

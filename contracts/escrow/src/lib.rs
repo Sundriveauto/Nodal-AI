@@ -312,6 +312,68 @@ impl EscrowContract {
         }
     }
 
+    /// Cancel the escrow cooperatively. Requires both depositor and arbiter to authorise.
+    ///
+    /// # Arguments
+    /// * `env`       - The execution environment.
+    /// * `depositor` - Must match the depositor recorded at initialisation.
+    /// * `arbiter`   - Must match the arbiter recorded at initialisation.
+    ///
+    /// # Panics
+    /// * `NotDepositor` - If the depositor parameter does not match stored depositor.
+    /// * `NotArbiter` - If the arbiter parameter does not match stored arbiter.
+    /// * `AlreadyReleased` - If funds have already been released, refunded, or cancelled.
+    ///
+    /// # Return Value
+    /// None.
+    pub fn cancel(env: Env, depositor: Address, arbiter: Address) {
+        let stored_depositor: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Depositor)
+            .expect("escrow: state corrupted");
+        let stored_arbiter: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Arbiter)
+            .expect("escrow: state corrupted");
+
+        // Dual-signature: both parties must authorise before any state mutation.
+        stored_depositor.require_auth();
+        stored_arbiter.require_auth();
+
+        if depositor != stored_depositor {
+            panic_with_error!(&env, EscrowError::NotDepositor);
+        }
+        if arbiter != stored_arbiter {
+            panic_with_error!(&env, EscrowError::NotArbiter);
+        }
+
+        Self::assert_not_released(&env);
+
+        let token: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Token)
+            .expect("escrow: state corrupted");
+        let amount: i128 = env
+            .storage()
+            .instance()
+            .get(&DataKey::Amount)
+            .expect("escrow: state corrupted");
+
+        env.storage().instance().set(&DataKey::Released, &true);
+
+        TokenClient::new(&env, &token).transfer(
+            &env.current_contract_address(),
+            &stored_depositor,
+            &amount,
+        );
+
+        env.events()
+            .publish((Symbol::new(&env, "cancelled"),), (stored_depositor, amount));
+    }
+
     // ─── Internal helpers ────────────────────────────────────────────────────
 
     fn assert_not_released(env: &Env) {

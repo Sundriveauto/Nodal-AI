@@ -6,6 +6,7 @@
 
 import {
   Horizon,
+  Networks,
   rpc,
   Transaction,
   FeeBumpTransaction,
@@ -17,6 +18,20 @@ import { validateXDR } from "./types/xdr";
 import { createLogger } from "./utils/logger";
 
 const log = createLogger("rpc-client");
+
+// ─── Network passphrase resolver ─────────────────────────────────────────────
+
+/**
+ * Map a STELLAR_NETWORK string to its canonical network passphrase.
+ * Throws for any unrecognised network string so callers fail fast rather than
+ * silently defaulting to the wrong passphrase.
+ */
+export function resolveNetworkPassphrase(network: string): string {
+  if (network === "mainnet") return Networks.PUBLIC;
+  if (network === "futurenet") return Networks.FUTURENET;
+  if (network === "testnet") return Networks.TESTNET;
+  throw new Error(`Unsupported network: ${network}`);
+}
 
 // ─── Timeout error ────────────────────────────────────────────────────────────
 

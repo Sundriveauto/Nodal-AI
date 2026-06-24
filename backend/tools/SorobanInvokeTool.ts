@@ -7,7 +7,6 @@
 
 import {
   Keypair,
-  Networks,
   TransactionBuilder,
   Operation,
   Contract,
@@ -18,7 +17,7 @@ import {
 import { z } from "zod";
 import { config } from "../config";
 import { logger } from "../logger";
-import { loadAccount, prepareSorobanTx, sorobanServer } from "../rpc_client";
+import { loadAccount, prepareSorobanTx, resolveNetworkPassphrase, sorobanServer } from "../rpc_client";
 
 // ─── Input schema ─────────────────────────────────────────────────────────────
 
@@ -84,12 +83,7 @@ export class SorobanInvokeTool {
 
   constructor(secretKey: string = config.agentKeypair().secret()) {
     this.keypair = Keypair.fromSecret(secretKey);
-    this.networkPassphrase =
-      config.STELLAR_NETWORK === "mainnet"
-        ? Networks.PUBLIC
-        : config.STELLAR_NETWORK === "futurenet"
-        ? Networks.FUTURENET
-        : Networks.TESTNET;
+    this.networkPassphrase = resolveNetworkPassphrase(config.STELLAR_NETWORK);
   }
 
   /**
