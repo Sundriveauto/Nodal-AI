@@ -4,6 +4,12 @@
  * All network calls route through here — centralised observability point.
  */
 import { Horizon, rpc, Transaction, FeeBumpTransaction } from "@stellar/stellar-sdk";
+/**
+ * Map a STELLAR_NETWORK string to its canonical network passphrase.
+ * Throws for any unrecognised network string so callers fail fast rather than
+ * silently defaulting to the wrong passphrase.
+ */
+export declare function resolveNetworkPassphrase(network: string): string;
 export declare class TimeoutError extends Error {
     constructor(ms: number);
 }

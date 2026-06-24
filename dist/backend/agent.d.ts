@@ -45,6 +45,18 @@ export declare class PayFiAgent extends EventEmitter {
     destroy(): void;
     drain(): void;
     waitForPendingTasks(): Promise<void>;
+    /**
+     * Execute an ordered list of tasks sequentially, stopping on the first failure.
+     *
+     * Each task is dispatched through `run()` so spending-limit guards and tool
+     * routing behave identically to single-task execution. Tasks are never
+     * pre-validated as a batch — the limit is checked per-task at dispatch time.
+     *
+     * @param tasks - Ordered list of tasks to execute.
+     * @returns An array of results. The array length equals the index of the first
+     *   failed task plus one — subsequent tasks are never executed or returned.
+     */
+    runSequence(tasks: AgentTask[]): Promise<AgentResult[]>;
     /** Dispatch a task to the correct tool */
     run(task: AgentTask): Promise<AgentResult>;
 }

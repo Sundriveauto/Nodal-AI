@@ -1,4 +1,5 @@
 # Nodal AI
+
 [![CI](https://github.com/Nodal-stellar/Nodal-AI/actions/workflows/ci.yml/badge.svg)](https://github.com/Nodal-stellar/Nodal-AI/actions/workflows/ci.yml)
 **Modular, production-ready Agent Kit for autonomous PayFi (Payment-Finance) flows on the Stellar Network.**
 
@@ -6,17 +7,17 @@ Nodal AI empowers developers to build autonomous agents capable of handling comp
 
 ---
 
-##  Why Nodal AI?
+## Why Nodal AI?
 
 In the era of **PayFi**, payments are no longer just passive transfers they are programmable, autonomous, and integrated into the global financial fabric. Nodal AI bridges the gap between AI reasoning and Stellar's high-speed, low-cost network.
 
-* **Autonomous PayFi:** Built-in support for the `x402` payment standard, enabling seamless machine-to-machine value exchange.
-* **Modular Architecture:** Swap in new tools, chain actions, and orchestrate complex workflows without touching core signing logic.
-* **Safety-First Design:** Every transaction is simulated via Soroban RPC before broadcast, and all secrets remain strictly externalized.
+- **Autonomous PayFi:** Built-in support for the `x402` payment standard, enabling seamless machine-to-machine value exchange.
+- **Modular Architecture:** Swap in new tools, chain actions, and orchestrate complex workflows without touching core signing logic.
+- **Safety-First Design:** Every transaction is simulated via Soroban RPC before broadcast, and all secrets remain strictly externalized.
 
 ---
 
-##  Architecture
+## Architecture
 
 Nodal AI is built on a clean, three-pillar separation of concerns. For a deep dive into the system design, tool dispatch, simulation gates, and state machines, please read the [Architecture Guide](./ARCHITECTURE.md).
 
@@ -30,17 +31,20 @@ Nodal AI is built on a clean, three-pillar separation of concerns. For a deep di
 
 ---
 
-##  Quick Start
+## Quick Start
 
 1. **Clone & Configure:**
+
    ```bash
    git clone https://github.com/your-username/nodal-ai.git
    cd nodal-ai
    cp .env.example .env
    ```
+
    Open `.env` and fill in at minimum `AGENT_SECRET_KEY`, `HORIZON_URL`, `SOROBAN_RPC_URL`, and `X402_ASSET_ISSUER`. See [`.env.example`](./.env.example) for the full list of variables and their descriptions.
 
 2. **Install Dependencies:**
+
    ```bash
    npm install
    ```
@@ -53,20 +57,26 @@ Nodal AI is built on a clean, three-pillar separation of concerns. For a deep di
 
 ---
 
-##  Development & Testing
+## Development & Testing
 
 ### Backend (TypeScript)
+
 The `backend/` pillar contains the "Agent Brain." Use it to define tools and manage agent state.
-*   `npm run build`: Compiles the TypeScript agent core.
+
+- `npm run build`: Compiles the TypeScript agent core.
 
 ### Smart Contracts (Rust/Soroban)
-The `contracts/` pillar holds your escrow and payment logic. 
-*   `cd contracts/escrow && cargo test`: Run the suite of Soroban unit tests to ensure contract safety.
+
+The `contracts/` pillar holds your escrow and payment logic.
+
+- `cd contracts/escrow && cargo test`: Run the suite of Soroban unit tests to ensure contract safety.
 
 ### Integration Testing
+
 We use `Vitest` to ensure the entire flow—from AI reasoning to network settlement—works as expected.
-*   `npm run test`: Executes the `/tests` suite.
-*   `npm run test:ui`: Runs the test suite with the interactive Vitest UI.
+
+- `npm run test`: Executes the `/tests` suite.
+- `npm run test:ui`: Runs the test suite with the interactive Vitest UI.
 
 ---
 
@@ -77,12 +87,14 @@ Nodal AI includes a multi-stage Dockerfile and Docker Compose stack for local de
 ### Running with Docker Compose
 
 1. **Start the local Stellar network and Nodal agent:**
+
    ```bash
    docker-compose up --build
    ```
+
    This will spin up:
-   * `stellar-quickstart` at `http://localhost:8000` (Horizon) and `http://localhost:8001` (Soroban RPC).
-   * `agent` which automatically connects to the quickstart services once they are healthy.
+   - `stellar-quickstart` at `http://localhost:8000` (Horizon) and `http://localhost:8001` (Soroban RPC).
+   - `agent` which automatically connects to the quickstart services once they are healthy.
 
 2. **Stop the services and clean up containers:**
    ```bash
@@ -92,13 +104,14 @@ Nodal AI includes a multi-stage Dockerfile and Docker Compose stack for local de
 ### Run Tests in Docker
 
 You can run the test suite within an isolated test runner container:
+
 ```bash
 docker-compose --profile test up --build
 ```
 
 ---
 
-##  Security Policy
+## Security Policy
 
 Security is the foundation of PayFi. See [SECURITY.md](./SECURITY.md) for the full responsible disclosure policy, response SLAs, core security invariants, and secret management guidelines.
 
@@ -106,7 +119,8 @@ To report a vulnerability privately, use [GitHub Security Advisories](https://gi
 
 ---
 
-##  Contributing
+## Contributing
+
 We are actively participating in the **Stellar Wave** program! We welcome contributions ranging from bug fixes to new tool modules.
 
 1.  Check the [Issues](https://github.com/your-username/nodal-ai/issues) tab for tickets tagged `good first issue` or `help wanted`.
@@ -115,13 +129,15 @@ We are actively participating in the **Stellar Wave** program! We welcome contri
 
 ---
 
-##  License
+## License
+
 Released under the [MIT License](LICENSE).
 
 ---
-*Built for the Stellar ecosystem by [Dami24-hub].* 
 
-```
+_Built for the Stellar ecosystem by [Dami24-hub]._
+
+````
 
 
 ## x402 Payment Flow
@@ -147,7 +163,7 @@ sequenceDiagram
     ST-->>X: { txHash, ledger }
     X-->>PA: X402PaymentProof
     PA-->>C: AgentResult
-```
+````
 
 In practice, the `payload` handed to `run()` is the parsed body of a `402 Payment Required` response from a resource server, conforming to `X402ChallengeSchema` — but the HTTP exchange that obtains and replays that challenge is the caller's responsibility, not `X402PaymentTool`'s.
 
@@ -159,15 +175,15 @@ Before `PayFiAgent.run()` delegates to `X402PaymentTool`, it calls `assertWithin
 
 Once past the spending check, `X402PaymentTool.respond()` validates the challenge against this schema before doing anything else:
 
-| Field | Type | Description |
-|---|---|---|
-| `resource` | `string` (URL) | The URL of the resource being gated. Must be a valid URL. |
-| `amount` | `string` | The amount due, as a string to avoid floating-point precision issues in transit. |
-| `assetCode` | `string` | The Stellar asset code to pay in (e.g. `USDC`, or `XLM` for native). Defaults to `config.X402_ASSET_CODE`. |
-| `assetIssuer` | `string` | The issuing account of the asset. Defaults to `config.X402_ASSET_ISSUER`. Ignored when `assetCode` is `XLM`. |
-| `payTo` | `string` | The recipient Stellar account. Must be exactly 56 characters (a valid Stellar public key). |
-| `nonce` | `string` (UUID v4) | A unique identifier for this challenge, used to correlate the resulting payment with the original request. |
-| `expiresAt` | `string` (ISO datetime) | The deadline after which the challenge is no longer valid. Checked against `new Date()` before any payment is attempted. |
+| Field         | Type                    | Description                                                                                                              |
+| ------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `resource`    | `string` (URL)          | The URL of the resource being gated. Must be a valid URL.                                                                |
+| `amount`      | `string`                | The amount due, as a string to avoid floating-point precision issues in transit.                                         |
+| `assetCode`   | `string`                | The Stellar asset code to pay in (e.g. `USDC`, or `XLM` for native). Defaults to `config.X402_ASSET_CODE`.               |
+| `assetIssuer` | `string`                | The issuing account of the asset. Defaults to `config.X402_ASSET_ISSUER`. Ignored when `assetCode` is `XLM`.             |
+| `payTo`       | `string`                | The recipient Stellar account. Must be exactly 56 characters (a valid Stellar public key).                               |
+| `nonce`       | `string` (UUID v4)      | A unique identifier for this challenge, used to correlate the resulting payment with the original request.               |
+| `expiresAt`   | `string` (ISO datetime) | The deadline after which the challenge is no longer valid. Checked against `new Date()` before any payment is attempted. |
 
 If `rawChallenge` doesn't conform to this shape, `X402ChallengeSchema.parse()` throws and no payment is attempted.
 
@@ -176,7 +192,7 @@ If `rawChallenge` doesn't conform to this shape, `X402ChallengeSchema.parse()` t
 The challenge's `nonce` is a UUID v4 (36 characters), but Stellar's text memo field caps at 28 bytes. `X402PaymentTool` truncates it directly:
 
 ```typescript
-memo: challenge.nonce.slice(0, 28)
+memo: challenge.nonce.slice(0, 28);
 ```
 
 This embeds enough of the nonce on-chain for a resource server to correlate a settled transaction with the original challenge by memo lookup on Horizon. Note this is a string truncation, not a hash — a resource server verifying the proof should compare against the same `slice(0, 28)` of the nonce it issued.
@@ -187,12 +203,12 @@ Once `StellarPaymentTool.execute()` returns a settled `txHash`, `respond()` buil
 
 ```typescript
 interface X402PaymentProof {
-  protocol: "x402";  // protocol tag, always "x402"
-  network: string;   // config.STELLAR_NETWORK
-  txHash: string;    // settled Stellar transaction hash
-  nonce: string;      // the original challenge nonce, in full
-  payer: string;      // the agent's Stellar public key
-  signedAt: string;   // ISO timestamp the proof was issued
+  protocol: "x402"; // protocol tag, always "x402"
+  network: string; // config.STELLAR_NETWORK
+  txHash: string; // settled Stellar transaction hash
+  nonce: string; // the original challenge nonce, in full
+  payer: string; // the agent's Stellar public key
+  signedAt: string; // ISO timestamp the proof was issued
 }
 ```
 

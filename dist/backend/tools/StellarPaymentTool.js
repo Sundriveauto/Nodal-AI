@@ -51,12 +51,7 @@ class StellarPaymentTool {
      */
     constructor(secretKey = config_1.config.agentKeypair().secret()) {
         this.keypair = stellar_sdk_1.Keypair.fromSecret(secretKey);
-        this.networkPassphrase =
-            config_1.config.STELLAR_NETWORK === "mainnet"
-                ? stellar_sdk_1.Networks.PUBLIC
-                : config_1.config.STELLAR_NETWORK === "futurenet"
-                    ? stellar_sdk_1.Networks.FUTURENET
-                    : stellar_sdk_1.Networks.TESTNET;
+        this.networkPassphrase = (0, rpc_client_1.resolveNetworkPassphrase)(config_1.config.STELLAR_NETWORK);
     }
     get publicKey() {
         return this.keypair.publicKey();

@@ -5,6 +5,29 @@
  * Comprehensive test suite for SorobanInvokeTool.
  * Covers: simulation gate, happy path, ERROR/FAILED status handling,
  * polling timeout, invalid inputs, and dry-run mode.
+ *
+ * ## Mock Architecture
+ *
+ * This suite uses vi.mock() at the module level to mock two critical dependencies:
+ *
+ * 1. **rpcClient**: The RPC abstraction layer that communicates with Horizon and Soroban.
+ *    - Allows us to test SorobanInvokeTool in complete isolation from network calls.
+ *    - Each test configures the mock's return values to simulate different network scenarios
+ *      (SUCCESS, FAILED, NOT_FOUND, ERROR statuses, timeouts, etc.).
+ *    - The mock is cleared before each test via vi.clearAllMocks() (from vitest.config.ts).
+ *
+ * 2. **config**: The environment configuration (network URLs, agent keypair, thresholds).
+ *    - Mocked to return predictable, test-friendly values.
+ *    - Prevents the test from requiring actual environment variables or .env files.
+ *
+ * ## Why isolate: true Matters Here
+ *
+ * With vitest.config.ts set to isolate: true, each test file gets its own V8 context:
+ * - Mock definitions (vi.mock()) apply only to this test file.
+ * - Other test files can mock the same modules differently without interference.
+ * - Global state (vi.clearAllMocks(), test instance) is not shared between files.
+ *
+ * Example: If balance_check.test.ts also mocks rpcClient, it won't affect this file's mocks.
  */
 var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
     if (k2 === undefined) k2 = k;
@@ -44,6 +67,15 @@ const vitest_1 = require("vitest");
 const SorobanInvokeTool_1 = require("../backend/tools/SorobanInvokeTool");
 const rpcClient = __importStar(require("../backend/rpc_client"));
 // ─── Module mock ──────────────────────────────────────────────────────────────
+/**
+ * Mock the rpc_client module to intercept all calls to Horizon and Soroban RPC.
+ *
+ * Each function (loadAccount, prepareSorobanTx, etc.) is mocked with vi.fn(),
+ * allowing tests to define return values or rejection behavior on a per-test basis.
+ *
+ * The sorobanServer object contains sendTransaction and getTransaction, which are
+ * critical for the polling mechanism that confirms transaction settlement.
+ */
 vitest_1.vi.mock("../backend/rpc_client", () => ({
     loadAccount: vitest_1.vi.fn(),
     submitTransaction: vitest_1.vi.fn(),
@@ -55,6 +87,16 @@ vitest_1.vi.mock("../backend/rpc_client", () => ({
         getTransaction: vitest_1.vi.fn(),
     },
 }));
+/**
+ * Mock the config module to provide a predictable environment.
+ *
+ * In real use, config.ts reads from process.env or .env files.
+ * Here, we statically return test credentials and thresholds.
+ *
+ * Note: The AGENT_SECRET_KEY is a Stellar secret key used in tests only.
+ * It is never used in actual signed transactions in this test suite
+ * because all RPC calls are mocked.
+ */
 vitest_1.vi.mock("../backend/config", () => {
     const { Keypair } = require("@stellar/stellar-sdk");
     const secret = "SBZ7EYXHNB4WPPIWC5YAMH2U4L4QU6DKYXQWG4I55G6O4CLE4BBHCE73";
@@ -74,8 +116,21 @@ vitest_1.vi.mock("../backend/config", () => {
     };
 });
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
+/**
+ * Test fixtures: reusable constants and helper functions.
+ */
 const TEST_SECRET = "SBZ7EYXHNB4WPPIWC5YAMH2U4L4QU6DKYXQWG4I55G6O4CLE4BBHCE73";
 const VALID_CONTRACT = "CDPVBHPSVYKWSI5ECEA4DASBG3RBNU5EHEE3DHNFX7RMBCZV66CSC7NH";
+/**
+ * makeMockAccount(publicKey): Constructs a mock Stellar account object.
+ *
+ * SorobanInvokeTool calls rpcClient.loadAccount() to fetch the agent's
+ * current account details from Horizon. This mock account satisfies
+ * that interface without hitting the network.
+ *
+ * Fields like sequenceNumber, thresholds, and signers are required
+ * by the Stellar SDK's transaction building logic.
+ */
 function makeMockAccount(publicKey) {
     return {
         id: publicKey,
@@ -85,7 +140,11 @@ function makeMockAccount(publicKey) {
         sequence: "100",
         incrementedSequenceNumber: () => "101",
         thresholds: { low_threshold: 0, med_threshold: 0, high_threshold: 0 },
-        flags: { auth_required: false, auth_revocable: false, auth_immutable: false },
+        flags: {
+            auth_required: false,
+            auth_revocable: false,
+            auth_immutable: false,
+        },
         balances: [],
         signers: [],
         data_attr: {},
@@ -100,12 +159,23 @@ function makeMockAccount(publicKey) {
         tool = new SorobanInvokeTool_1.SorobanInvokeTool();
     });
     // ── Input validation ────────────────────────────────────────────────────────
+    /**
+     * Input validation tests: ensure SorobanInvokeTool rejects malformed inputs
+     * before any network call is attempted.
+     *
+     * These are fast unit tests that don't need mocked RPC calls since they
+     * reject at the parameter validation layer.
+     */
     (0, vitest_1.describe)("Input validation", () => {
         (0, vitest_1.it)("rejects a contractId that is too short", async () => {
             await (0, vitest_1.expect)(tool.execute({ contractId: "bad_id", method: "release", args: [] })).rejects.toThrow(/Invalid Stellar contract ID/);
         });
         (0, vitest_1.it)("rejects a contractId that is too long (57 chars)", async () => {
-            await (0, vitest_1.expect)(tool.execute({ contractId: "C".padEnd(57, "A"), method: "release", args: [] })).rejects.toThrow(/Invalid Stellar contract ID/);
+            await (0, vitest_1.expect)(tool.execute({
+                contractId: "C".padEnd(57, "A"),
+                method: "release",
+                args: [],
+            })).rejects.toThrow(/Invalid Stellar contract ID/);
         });
         (0, vitest_1.it)("rejects an empty method name", async () => {
             await (0, vitest_1.expect)(tool.execute({ contractId: VALID_CONTRACT, method: "", args: [] })).rejects.toThrow();
@@ -115,12 +185,31 @@ function makeMockAccount(publicKey) {
         });
     });
     // ── Simulation gate (mandatory) ─────────────────────────────────────────────
+    /**
+     * Simulation gate tests: the core safety mechanism of SorobanInvokeTool.
+     *
+     * Every Soroban invocation must first run through prepareSorobanTx(), which
+     * performs a dry-run simulation on the Soroban RPC server. Only if the
+     * simulation succeeds (no errors) does the transaction proceed to broadcast.
+     *
+     * This prevents:
+     * - Submitting transactions that will fail on-chain (wasting fees).
+     * - Executing unauthorized contract calls or insufficient balance scenarios.
+     * - Introducing bad state in the contract due to failed side effects.
+     *
+     * Tests here verify:
+     * 1. prepareSorobanTx is ALWAYS called before submission.
+     * 2. If simulation fails, submission is SKIPPED and an error is thrown.
+     * 3. Dry-run mode (simulateOnly=true) runs the simulation but skips broadcast.
+     */
     (0, vitest_1.describe)("Simulation gate", () => {
         (0, vitest_1.beforeEach)(() => {
             vitest_1.vi.mocked(rpcClient.loadAccount).mockResolvedValue(makeMockAccount("GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"));
         });
         (0, vitest_1.it)("calls prepareSorobanTx before any submission", async () => {
-            vitest_1.vi.mocked(rpcClient.prepareSorobanTx).mockResolvedValue({ sign: vitest_1.vi.fn() });
+            vitest_1.vi.mocked(rpcClient.prepareSorobanTx).mockResolvedValue({
+                sign: vitest_1.vi.fn(),
+            });
             vitest_1.vi.mocked(rpcClient.sorobanServer.sendTransaction).mockResolvedValue({
                 status: "PENDING",
                 hash: "sim_test_hash",
@@ -128,20 +217,34 @@ function makeMockAccount(publicKey) {
             vitest_1.vi.mocked(rpcClient.sorobanServer.getTransaction).mockResolvedValue({
                 status: "SUCCESS",
             });
-            await tool.execute({ contractId: VALID_CONTRACT, method: "release", args: [] });
+            await tool.execute({
+                contractId: VALID_CONTRACT,
+                method: "release",
+                args: [],
+            });
             (0, vitest_1.expect)(rpcClient.prepareSorobanTx).toHaveBeenCalledOnce();
         });
         (0, vitest_1.it)("throws and does NOT submit when simulation fails", async () => {
             vitest_1.vi.mocked(rpcClient.prepareSorobanTx).mockRejectedValue(new Error("Soroban simulation failed: insufficient balance"));
-            await (0, vitest_1.expect)(tool.execute({ contractId: VALID_CONTRACT, method: "release", args: [] })).rejects.toThrow(/simulation failed/);
+            await (0, vitest_1.expect)(tool.execute({
+                contractId: VALID_CONTRACT,
+                method: "release",
+                args: [],
+            })).rejects.toThrow(/simulation failed/);
             (0, vitest_1.expect)(rpcClient.sorobanServer.sendTransaction).not.toHaveBeenCalled();
         });
         (0, vitest_1.it)("throws when simulation fails with contract error code", async () => {
             vitest_1.vi.mocked(rpcClient.prepareSorobanTx).mockRejectedValue(new Error("Soroban simulation failed: Error(Contract, #3)"));
-            await (0, vitest_1.expect)(tool.execute({ contractId: VALID_CONTRACT, method: "release", args: [] })).rejects.toThrow(/simulation failed/);
+            await (0, vitest_1.expect)(tool.execute({
+                contractId: VALID_CONTRACT,
+                method: "release",
+                args: [],
+            })).rejects.toThrow(/simulation failed/);
         });
         (0, vitest_1.it)("does NOT call sendTransaction when simulateOnly=true", async () => {
-            vitest_1.vi.mocked(rpcClient.prepareSorobanTx).mockResolvedValue({ sign: vitest_1.vi.fn() });
+            vitest_1.vi.mocked(rpcClient.prepareSorobanTx).mockResolvedValue({
+                sign: vitest_1.vi.fn(),
+            });
             const result = await tool.execute({
                 contractId: VALID_CONTRACT,
                 method: "release",
@@ -153,10 +256,29 @@ function makeMockAccount(publicKey) {
         });
     });
     // ── Submission and confirmation polling ─────────────────────────────────────
+    /**
+     * Submission and confirmation polling tests: verify transaction lifecycle after
+     * a successful simulation.
+     *
+     * After prepareSorobanTx succeeds, the transaction envelope is signed and
+     * submitted to sorobanServer.sendTransaction(). The submission returns a
+     * PENDING status and a txHash. SorobanInvokeTool then polls sorobanServer.getTransaction()
+     * repeatedly until the transaction reaches a terminal state (SUCCESS, FAILED, ERROR).
+     *
+     * Tests here cover:
+     * 1. Happy path: immediate confirmation on the first poll.
+     * 2. Retries: transaction confirmed after multiple NOT_FOUND polls.
+     * 3. Failure: on-chain FAILED or ERROR statuses are caught and re-thrown.
+     * 4. Timeout: polling window exhausted without reaching a terminal state.
+     *
+     * The polling interval and retry count are defined in config (RETRY_DELAY_MS).
+     */
     (0, vitest_1.describe)("Submission and confirmation polling", () => {
         (0, vitest_1.beforeEach)(() => {
             vitest_1.vi.mocked(rpcClient.loadAccount).mockResolvedValue(makeMockAccount("GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"));
-            vitest_1.vi.mocked(rpcClient.prepareSorobanTx).mockResolvedValue({ sign: vitest_1.vi.fn() });
+            vitest_1.vi.mocked(rpcClient.prepareSorobanTx).mockResolvedValue({
+                sign: vitest_1.vi.fn(),
+            });
         });
         (0, vitest_1.it)("returns txHash after a successful confirmation on first poll", async () => {
             vitest_1.vi.mocked(rpcClient.sorobanServer.sendTransaction).mockResolvedValue({
@@ -198,7 +320,11 @@ function makeMockAccount(publicKey) {
             vitest_1.vi.mocked(rpcClient.sorobanServer.getTransaction).mockResolvedValue({
                 status: "FAILED",
             });
-            await (0, vitest_1.expect)(tool.execute({ contractId: VALID_CONTRACT, method: "release", args: [] })).rejects.toThrow(/failed on-chain/);
+            await (0, vitest_1.expect)(tool.execute({
+                contractId: VALID_CONTRACT,
+                method: "release",
+                args: [],
+            })).rejects.toThrow(/failed on-chain/);
         });
         (0, vitest_1.it)("throws when sendTransaction returns ERROR status", async () => {
             vitest_1.vi.mocked(rpcClient.sorobanServer.sendTransaction).mockResolvedValue({
@@ -206,7 +332,11 @@ function makeMockAccount(publicKey) {
                 errorResult: { toXDR: () => "base64_error_xdr" },
                 hash: "error_hash",
             });
-            await (0, vitest_1.expect)(tool.execute({ contractId: VALID_CONTRACT, method: "release", args: [] })).rejects.toThrow(/Soroban submit failed/);
+            await (0, vitest_1.expect)(tool.execute({
+                contractId: VALID_CONTRACT,
+                method: "release",
+                args: [],
+            })).rejects.toThrow(/Soroban submit failed/);
         });
         (0, vitest_1.it)("throws when polling window is exhausted (timeout)", async () => {
             vitest_1.vi.mocked(rpcClient.sorobanServer.sendTransaction).mockResolvedValue({
@@ -217,21 +347,45 @@ function makeMockAccount(publicKey) {
             vitest_1.vi.mocked(rpcClient.sorobanServer.getTransaction).mockResolvedValue({
                 status: "NOT_FOUND",
             });
-            await (0, vitest_1.expect)(tool.execute({ contractId: VALID_CONTRACT, method: "release", args: [] })).rejects.toThrow(/not confirmed within polling window/);
+            await (0, vitest_1.expect)(tool.execute({
+                contractId: VALID_CONTRACT,
+                method: "release",
+                args: [],
+            })).rejects.toThrow(/not confirmed within polling window/);
         }, 5_000); // RETRY_DELAY_MS=100 → intervalMs=200ms × 10 attempts ≈ 2s
     });
     // ── Network error handling ──────────────────────────────────────────────────
+    /**
+     * Network error handling tests: ensure SorobanInvokeTool gracefully surfaces
+     * network-level failures.
+     *
+     * These tests mock network errors (timeouts, 404s) at various points in the
+     * call chain (account load, simulation, submission) and verify that they
+     * propagate to the caller without being swallowed or retried indefinitely.
+     *
+     * This is important for user code to distinguish between:
+     * - Transient network glitches (worth retrying at the application level).
+     * - Permanent errors like "account not found" (require manual intervention).
+     */
     (0, vitest_1.describe)("Network error handling", () => {
         (0, vitest_1.beforeEach)(() => {
             vitest_1.vi.mocked(rpcClient.loadAccount).mockResolvedValue(makeMockAccount("GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"));
         });
         (0, vitest_1.it)("propagates network timeout on prepareSorobanTx", async () => {
             vitest_1.vi.mocked(rpcClient.prepareSorobanTx).mockRejectedValue(new Error("ECONNABORTED: network timeout"));
-            await (0, vitest_1.expect)(tool.execute({ contractId: VALID_CONTRACT, method: "release", args: [] })).rejects.toThrow(/timeout/);
+            await (0, vitest_1.expect)(tool.execute({
+                contractId: VALID_CONTRACT,
+                method: "release",
+                args: [],
+            })).rejects.toThrow(/timeout/);
         });
         (0, vitest_1.it)("propagates account load failure", async () => {
             vitest_1.vi.mocked(rpcClient.loadAccount).mockRejectedValue(new Error("Horizon: account not found (404)"));
-            await (0, vitest_1.expect)(tool.execute({ contractId: VALID_CONTRACT, method: "release", args: [] })).rejects.toThrow(/not found/);
+            await (0, vitest_1.expect)(tool.execute({
+                contractId: VALID_CONTRACT,
+                method: "release",
+                args: [],
+            })).rejects.toThrow(/not found/);
         });
     });
 });

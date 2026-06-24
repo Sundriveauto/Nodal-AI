@@ -6,6 +6,7 @@
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.sorobanServer = exports.horizonServer = exports.StellarRPCError = exports.TimeoutError = void 0;
+exports.resolveNetworkPassphrase = resolveNetworkPassphrase;
 exports.DEFAULT_IS_RETRYABLE = DEFAULT_IS_RETRYABLE;
 exports.withRetry = withRetry;
 exports.loadAccount = loadAccount;
@@ -19,6 +20,21 @@ const logger_1 = require("./logger");
 const xdr_1 = require("./types/xdr");
 const logger_2 = require("./utils/logger");
 const log = (0, logger_2.createLogger)("rpc-client");
+// ─── Network passphrase resolver ─────────────────────────────────────────────
+/**
+ * Map a STELLAR_NETWORK string to its canonical network passphrase.
+ * Throws for any unrecognised network string so callers fail fast rather than
+ * silently defaulting to the wrong passphrase.
+ */
+function resolveNetworkPassphrase(network) {
+    if (network === "mainnet")
+        return stellar_sdk_1.Networks.PUBLIC;
+    if (network === "futurenet")
+        return stellar_sdk_1.Networks.FUTURENET;
+    if (network === "testnet")
+        return stellar_sdk_1.Networks.TESTNET;
+    throw new Error(`Unsupported network: ${network}`);
+}
 // ─── Timeout error ────────────────────────────────────────────────────────────
 class TimeoutError extends Error {
     constructor(ms) {
