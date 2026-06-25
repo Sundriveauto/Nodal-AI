@@ -75,6 +75,7 @@ function assertWithinSpendingLimit(amount: unknown): void {
 export class PayFiAgent extends EventEmitter {
   private paymentTool: StellarPaymentTool;
   private sorobanTool: SorobanInvokeTool;
+  private sorobanQueryTool: SorobanQueryTool;
   private x402Tool: X402PaymentTool;
   private accountInfoTool: AccountInfoTool;
   private trustlineTool: TrustlineTool;
@@ -96,6 +97,7 @@ export class PayFiAgent extends EventEmitter {
     // type (Omit<RawEnv, "AGENT_SECRET_KEY">); using agentKeypair() makes the access explicit.
     this.paymentTool = new StellarPaymentTool(config.agentKeypair().secret());
     this.sorobanTool = new SorobanInvokeTool(config.agentKeypair().secret());
+    this.sorobanQueryTool = new SorobanQueryTool(config.agentKeypair().secret());
     this.x402Tool    = new X402PaymentTool(config.agentKeypair().secret());
     this.accountInfoTool = new AccountInfoTool();
     this.trustlineTool = new TrustlineTool(config.agentKeypair().secret());
@@ -261,6 +263,10 @@ export class PayFiAgent extends EventEmitter {
 
         case "soroban_invoke":
           data = await this.sorobanTool.execute(task.payload);
+          break;
+
+        case "soroban_query":
+          data = await this.sorobanQueryTool.query(task.payload);
           break;
 
         case "x402_respond": {

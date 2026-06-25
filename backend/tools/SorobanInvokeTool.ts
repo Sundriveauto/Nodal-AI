@@ -20,6 +20,13 @@ import { config } from "../config";
 import { logger } from "../logger";
 import { loadAccount, prepareSorobanTx, resolveNetworkPassphrase, sorobanServer } from "../rpc_client";
 
+// ─── Constants ─────────────────────────────────────────────────────────────────
+
+// SAFETY: Timeout in seconds for Soroban broadcast transactions.
+// Must ALWAYS be a positive integer. setTimeout(0) produces transactions
+// without time bounds that can be replayed indefinitely on the network.
+export const SOROBAN_TX_TIMEOUT = 30;
+
 // ─── Input schema ─────────────────────────────────────────────────────────────
 
 /**
@@ -184,7 +191,7 @@ export class SorobanInvokeTool {
       networkPassphrase: this.networkPassphrase,
     })
       .addOperation(contract.call(input.method, ...input.args))
-      .setTimeout(30)
+      .setTimeout(SOROBAN_TX_TIMEOUT)
       .build();
 
     logger.info("Simulating Soroban transaction", {
@@ -200,17 +207,26 @@ export class SorobanInvokeTool {
       return { simulationResult: preparedTx as Transaction };
     }
 
-    // 5. Sign prepared transaction
+    // 5. Timeout safety guard: reject transactions with no time bounds
+    //    setTimeout(0) produces transactions replayable indefinitely.
+    if (!preparedTx.timeBounds) {
+      throw new Error(
+        "Broadcast aborted: transaction has no time bounds (setTimeout(0)). " +
+        "Use a positive timeout to prevent indefinite replay."
+      );
+    }
+
+    // 6. Sign prepared transaction
     preparedTx.sign(this.keypair);
 
-    // 6. Submit
+    // 7. Submit
     const result = await sorobanServer.sendTransaction(preparedTx);
 
     if (result.status === "ERROR") {
       throw new Error(`Soroban submit failed: ${result.errorResult?.toXDR("base64")}`);
     }
 
-    // 7. Poll for confirmation
+    // 8. Poll for confirmation
     const confirmed = await this.pollForConfirmation(result.hash);
     return { txHash: confirmed.txHash };
   }
