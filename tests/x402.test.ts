@@ -255,6 +255,25 @@ describe("X402PaymentTool", () => {
     });
   });
 
+  // ── Nonce replay protection ─────────────────────────────────────────────────
+
+  describe("Nonce replay protection", () => {
+    it("first use with a given nonce succeeds", async () => {
+      await expect(tool.respond(VALID_CHALLENGE)).resolves.toHaveProperty("nonce", VALID_CHALLENGE.nonce);
+    });
+
+    it("second use with the same nonce throws", async () => {
+      await tool.respond(VALID_CHALLENGE);
+      await expect(tool.respond(VALID_CHALLENGE)).rejects.toThrow("x402: nonce already used");
+    });
+
+    it("allows a different nonce after a previous one was consumed", async () => {
+      await tool.respond(VALID_CHALLENGE);
+      const second = { ...VALID_CHALLENGE, nonce: "660e8400-e29b-41d4-a716-446655440001" };
+      await expect(tool.respond(second)).resolves.toHaveProperty("nonce", second.nonce);
+    });
+  });
+
   // ── Snapshot tests for X402PaymentProof shape ──────────────────────────────
 
   describe("X402PaymentProof snapshot", () => {
