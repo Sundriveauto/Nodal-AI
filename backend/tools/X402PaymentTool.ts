@@ -39,10 +39,14 @@ export interface X402PaymentProof {
 
 // ─── Tool implementation ──────────────────────────────────────────────────────
 
+const RATE_LIMIT_WINDOW_MS = 60_000;
+
 export class X402PaymentTool {
   private paymentTool: StellarPaymentTool;
   private keypair: Keypair;
   private horizonServer: Horizon.Server;
+  private paymentCount = 0;
+  private windowStart = Date.now();
 
   constructor(secretKey: string = config.agentKeypair().secret()) {
     this.keypair = Keypair.fromSecret(secretKey);
@@ -51,6 +55,17 @@ export class X402PaymentTool {
   }
 
   async respond(rawChallenge: unknown): Promise<X402PaymentProof> {
+    const now = Date.now();
+    if (now - this.windowStart >= RATE_LIMIT_WINDOW_MS) {
+      this.paymentCount = 0;
+      this.windowStart = now;
+    }
+
+    if (this.paymentCount >= config.MAX_X402_PAYMENTS_PER_MINUTE) {
+      throw new Error("x402: rate limit exceeded");
+    }
+    this.paymentCount++;
+
     const challenge = X402ChallengeSchema.parse(rawChallenge);
 
     if (challenge.payTo === this.keypair.publicKey()) {
