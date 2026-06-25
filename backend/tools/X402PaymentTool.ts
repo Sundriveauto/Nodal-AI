@@ -21,7 +21,10 @@ export const X402ChallengeSchema = z.object({
   payTo: z.string().length(56, "Invalid payTo Stellar address"),
   nonce: z.string().uuid("Nonce must be a UUID v4"),
   expiresAt: z.string().datetime(),
-});
+}).refine(
+  (data) => data.assetCode === "XLM" || !!data.assetIssuer,
+  { message: "assetIssuer is required for non-XLM payments", path: ["assetIssuer"] }
+);
 
 export type X402Challenge = z.infer<typeof X402ChallengeSchema>;
 
@@ -49,6 +52,10 @@ export class X402PaymentTool {
 
   async respond(rawChallenge: unknown): Promise<X402PaymentProof> {
     const challenge = X402ChallengeSchema.parse(rawChallenge);
+
+    if (challenge.payTo === this.keypair.publicKey()) {
+      throw new Error("Payment destination cannot be the agent's own address");
+    }
 
     if (config.ALLOWED_X402_ORIGINS) {
       const allowedOrigins = config.ALLOWED_X402_ORIGINS.split(",").map(o => o.trim());

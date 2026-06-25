@@ -95,6 +95,11 @@ export class StellarPaymentTool {
     // 1. Validate input
     const input = PaymentInputSchema.parse(rawInput);
 
+    // Self-payment guard
+    if (input.destination === this.keypair.publicKey()) {
+      throw new Error("Payment destination cannot be the agent's own address");
+    }
+
     // 2. Resolve asset
     if (input.assetCode !== "XLM" && !input.assetIssuer) {
       throw new Error(
@@ -107,27 +112,30 @@ export class StellarPaymentTool {
         : new Asset(input.assetCode, input.assetIssuer);
 
     // 3. Load source account (latest sequence number)
-    const sourceAccount = await loadAccount(this.keypair.publicKey());
+    let sourceAccount = await loadAccount(this.keypair.publicKey());
 
     // 4. Build transaction
-    const txBuilder = new TransactionBuilder(sourceAccount, {
-      fee: BASE_FEE,
-      networkPassphrase: this.networkPassphrase,
-    })
-      .addOperation(
-        Operation.payment({
-          destination: input.destination,
-          asset,
-          amount: input.amount,
-        })
-      )
-    
+    const buildTx = () => {
+      const builder = new TransactionBuilder(sourceAccount, {
+        fee: BASE_FEE,
+        networkPassphrase: this.networkPassphrase,
+      })
+        .addOperation(
+          Operation.payment({
+            destination: input.destination,
+            asset,
+            amount: input.amount,
+          })
+        );
 
-    if (input.memo) {
-      txBuilder.addMemo(Memo.text(input.memo));
-    }
+      if (input.memo) {
+        builder.addMemo(Memo.text(input.memo));
+      }
 
-const tx = txBuilder.setTimeout(30).build();
+      return builder.setTimeout(30).build();
+    };
+
+    let tx = buildTx();
 
     // 5. Fee estimation / simulation via Horizon dry-run
     //    (Horizon doesn't expose simulation like Soroban, so we validate
@@ -142,15 +150,28 @@ const tx = txBuilder.setTimeout(30).build();
     // 6. Sign
     tx.sign(this.keypair);
 
-    // 7. Submit
-    const result = (await submitTransaction(tx)) as {
-      hash: string;
-      ledger: number;
-    };
-    
-    return {
-      txHash: result.hash,
-      ledger: result.ledger,
-    };
+    // 7. Submit (with auto-retry on tx_bad_seq)
+    try {
+      const result = (await submitTransaction(tx)) as {
+        hash: string;
+        ledger: number;
+      };
+      return { txHash: result.hash, ledger: result.ledger };
+    } catch (err: unknown) {
+      if (err instanceof Error && err.message.includes("tx_bad_seq")) {
+        logger.warn("tx_bad_seq detected, reloading account and retrying once", {
+          source: this.keypair.publicKey(),
+        });
+        sourceAccount = await loadAccount(this.keypair.publicKey());
+        tx = buildTx();
+        tx.sign(this.keypair);
+        const result = (await submitTransaction(tx)) as {
+          hash: string;
+          ledger: number;
+        };
+        return { txHash: result.hash, ledger: result.ledger };
+      }
+      throw err;
+    }
   }
 }

@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { hash } from "@stellar/stellar-sdk";
+import { hash, Keypair } from "@stellar/stellar-sdk";
 import { X402PaymentTool } from "../backend/tools/X402PaymentTool";
 import { StellarPaymentTool } from "../backend/tools/StellarPaymentTool";
 import { config } from "../backend/config";
@@ -86,6 +86,24 @@ describe("X402PaymentTool", () => {
       await expect(
         tool.respond({ ...VALID_CHALLENGE, nonce: "not-a-uuid" })
       ).rejects.toThrow(/UUID/);
+    });
+
+    it("rejects a challenge where payTo is the agent's own address", async () => {
+      const agentPublicKey = Keypair.fromSecret(TEST_SECRET).publicKey();
+      await expect(
+        tool.respond({ ...VALID_CHALLENGE, payTo: agentPublicKey })
+      ).rejects.toThrow("Payment destination cannot be the agent's own address");
+    });
+
+    it("rejects USDC payment when assetIssuer is empty", async () => {
+      await expect(
+        tool.respond({ ...VALID_CHALLENGE, assetCode: "USDC", assetIssuer: "" })
+      ).rejects.toThrow("assetIssuer is required for non-XLM payments");
+    });
+
+    it("accepts XLM payment without assetIssuer", async () => {
+      const proof = await tool.respond({ ...VALID_CHALLENGE, assetCode: "XLM", assetIssuer: "" });
+      expect(proof.txHash).toBeTruthy();
     });
 
     it("rejects a missing resource URL", async () => {

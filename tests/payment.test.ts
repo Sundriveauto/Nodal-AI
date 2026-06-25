@@ -117,6 +117,12 @@ describe("StellarPaymentTool", () => {
       ).rejects.toThrow(/Amount must be/);
     });
 
+    it("rejects self-payment (destination === agent public key)", async () => {
+      await expect(
+        tool.execute({ destination: tool.publicKey, amount: "1", assetCode: "XLM" })
+      ).rejects.toThrow("Payment destination cannot be the agent's own address");
+    });
+
     it("rejects a non-XLM asset when issuer is missing", async () => {
       await expect(
         tool.execute({
@@ -326,6 +332,21 @@ describe("StellarPaymentTool", () => {
       await expect(
         tool.execute({ destination: VALID_DEST, amount: "1", assetCode: "XLM" })
       ).rejects.toThrow(/tx_bad_seq/);
+    });
+
+    it("recovers from tx_bad_seq on first retry", async () => {
+      vi.mocked(rpcClient.submitTransaction)
+        .mockRejectedValueOnce(new Error("Horizon: tx_bad_seq — sequence number is not valid"))
+        .mockResolvedValueOnce({ hash: "retry_success_hash", ledger: 42 } as any);
+
+      const result = await tool.execute({
+        destination: VALID_DEST,
+        amount: "1",
+        assetCode: "XLM",
+      });
+      expect(result.txHash).toBe("retry_success_hash");
+      expect(result.ledger).toBe(42);
+      expect(rpcClient.submitTransaction).toHaveBeenCalledTimes(2);
     });
 
     it("surfaces destination account non-existent (op_no_destination)", async () => {

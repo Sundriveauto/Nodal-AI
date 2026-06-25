@@ -365,13 +365,19 @@ describe("SorobanInvokeTool", () => {
         status: "FAILED",
       });
 
-      await expect(
-        tool.execute({
+      let error: Error | undefined;
+      try {
+        await tool.execute({
           contractId: VALID_CONTRACT,
           method: "release",
           args: [],
-        }),
-      ).rejects.toThrow(/failed on-chain/);
+        });
+      } catch (e) {
+        error = e as Error;
+      }
+      expect(error).toBeDefined();
+      expect(error!.message).toMatch(/failed on-chain/);
+      expect(error!.message).toContain("failed_on_chain_hash");
     });
 
     it("throws when sendTransaction returns ERROR status", async () => {
