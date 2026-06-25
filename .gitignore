@@ -11,5 +11,5 @@ contracts/escrow/test_snapshots/
 *.pem
 *.p12
 
-# Track TypeScript/Vitest snapshot files explicitly
-!tests/__snapshots__/
+# Vitest snapshot files — auto-generated, do not commit
+tests/__snapshots__/

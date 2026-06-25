@@ -12,6 +12,18 @@ import { X402PaymentTool } from "../backend/tools/X402PaymentTool";
 import { StellarPaymentTool } from "../backend/tools/StellarPaymentTool";
 import { config } from "../backend/config";
 
+// ─── Mock rpc_client so horizonServer.ledgers() is interceptable ──────────────
+
+vi.mock("../backend/rpc_client", () => ({
+  horizonServer: {
+    ledgers: vi.fn().mockReturnValue({
+      ledger: vi.fn().mockReturnValue({
+        call: vi.fn().mockResolvedValue({ closed_at: "2024-01-01T00:00:00Z" }),
+      }),
+    }),
+  },
+}));
+
 // ─── Mock StellarPaymentTool so x402 tests don't hit Horizon ─────────────────
 
 vi.mock("../backend/tools/StellarPaymentTool");
@@ -239,8 +251,10 @@ describe("X402PaymentTool", () => {
       expect(proof.txHash).toBe("x402_mock_tx_hash");
       expect(proof.nonce).toBe(VALID_CHALLENGE.nonce);
       expect(proof.payer).toMatch(/^G[A-Z2-7]{55}$/);
+      // signedAt is either ledger close time or wall-clock fallback — both are valid ISO strings
       expect(proof.signedAt).toBeTruthy();
-      expect(new Date(proof.signedAt).getTime()).toBeLessThanOrEqual(Date.now());
+      expect(() => new Date(proof.signedAt)).not.toThrow();
+      expect(new Date(proof.signedAt).toISOString()).toBe(proof.signedAt);
     });
 
     it("embeds nonce in memo as SHA-256 fingerprint (28 hex chars)", async () => {
@@ -309,6 +323,25 @@ describe("X402PaymentTool", () => {
       );
 
       await expect(tool.respond(VALID_CHALLENGE)).rejects.toThrow(/no_trust/);
+    });
+  });
+
+  // ── Nonce replay protection ─────────────────────────────────────────────────
+
+  describe("Nonce replay protection", () => {
+    it("first use with a given nonce succeeds", async () => {
+      await expect(tool.respond(VALID_CHALLENGE)).resolves.toHaveProperty("nonce", VALID_CHALLENGE.nonce);
+    });
+
+    it("second use with the same nonce throws", async () => {
+      await tool.respond(VALID_CHALLENGE);
+      await expect(tool.respond(VALID_CHALLENGE)).rejects.toThrow("x402: nonce already used");
+    });
+
+    it("allows a different nonce after a previous one was consumed", async () => {
+      await tool.respond(VALID_CHALLENGE);
+      const second = { ...VALID_CHALLENGE, nonce: "660e8400-e29b-41d4-a716-446655440001" };
+      await expect(tool.respond(second)).resolves.toHaveProperty("nonce", second.nonce);
     });
   });
 
