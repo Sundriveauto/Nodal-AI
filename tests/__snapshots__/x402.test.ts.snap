@@ -1,0 +1,12 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`X402PaymentTool > X402PaymentProof snapshot > X402PaymentProof has expected shape and fields 1`] = `
+{
+  "network": "testnet",
+  "nonce": "550e8400-e29b-41d4-a716-446655440000",
+  "payer": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+  "protocol": "x402",
+  "signedAt": [ANY],
+  "txHash": "x402_mock_tx_hash",
+}
+`;

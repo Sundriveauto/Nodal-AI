@@ -30,8 +30,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { Keypair } from "@stellar/stellar-sdk";
-import { SorobanInvokeTool } from "../backend/tools/SorobanInvokeTool";
+import { Keypair, nativeToScVal, xdr } from "@stellar/stellar-sdk";
+import { SorobanInvokeTool, SorobanInvokeInputSchema } from "../backend/tools/SorobanInvokeTool";
 import * as rpcClient from "../backend/rpc_client";
 
 // ─── Module mock ──────────────────────────────────────────────────────────────
@@ -465,6 +465,60 @@ describe("SorobanInvokeTool", () => {
           args: [],
         }),
       ).rejects.toThrow(/not found/);
+    });
+  });
+
+  // ── Args validation ────────────────────────────────────────────────────────
+
+  describe("args validation", () => {
+    it("rejects plain JavaScript object in args array", () => {
+      const result = SorobanInvokeInputSchema.safeParse({
+        contractId: VALID_CONTRACT,
+        method: "test",
+        args: [{}],
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("accepts xdr.ScVal instance from nativeToScVal", () => {
+      const scVal = nativeToScVal(42, { type: "u32" });
+      const result = SorobanInvokeInputSchema.safeParse({
+        contractId: VALID_CONTRACT,
+        method: "test",
+        args: [scVal],
+      });
+      expect(result.success).toBe(true);
+      expect(result.data?.args).toHaveLength(1);
+    });
+
+    it("rejects null args", () => {
+      const result = SorobanInvokeInputSchema.safeParse({
+        contractId: VALID_CONTRACT,
+        method: "test",
+        args: null,
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("accepts empty args array as default", () => {
+      const result = SorobanInvokeInputSchema.safeParse({
+        contractId: VALID_CONTRACT,
+        method: "test",
+      });
+      expect(result.success).toBe(true);
+      expect(result.data?.args).toEqual([]);
+    });
+
+    it("accepts multiple xdr.ScVal instances", () => {
+      const arg1 = nativeToScVal(100n, { type: "i128" });
+      const arg2 = nativeToScVal("GABC", { type: "address" });
+      const result = SorobanInvokeInputSchema.safeParse({
+        contractId: VALID_CONTRACT,
+        method: "test",
+        args: [arg1, arg2],
+      });
+      expect(result.success).toBe(true);
+      expect(result.data?.args).toHaveLength(2);
     });
   });
 });

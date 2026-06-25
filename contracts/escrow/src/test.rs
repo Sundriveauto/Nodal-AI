@@ -531,4 +531,84 @@ mod tests {
         assert_eq!(state.expiry, expiry);
         assert_eq!(state.released, false);
     }
+
+    // ── Cancel function tests ──────────────────────────────────────────────────
+    // #65: Add Rust test for escrow cancel function
+
+    // 18. cancel returns funds to depositor
+    #[test]
+    fn test_cancel_returns_funds_to_depositor() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let depositor = Address::generate(&env);
+        let recipient = Address::generate(&env);
+        let arbiter = Address::generate(&env);
+        let (token_id, token) = create_token(&env, &depositor);
+        StellarAssetClient::new(&env, &token_id).mint(&depositor, &1_000);
+        let contract_id = env.register_contract(None, EscrowContract);
+        let client = EscrowContractClient::new(&env, &contract_id);
+        let expiry = env.ledger().timestamp() + EXPIRY_OFFSET;
+        client.initialize(&depositor, &recipient, &arbiter, &token_id, &500, &expiry);
+        assert_eq!(token.balance(&depositor), 500);
+        assert_eq!(token.balance(&contract_id), 500);
+        client.cancel(&depositor, &arbiter);
+        assert_eq!(token.balance(&depositor), 1_000);
+        assert_eq!(token.balance(&contract_id), 0);
+    }
+
+    // 19. cancel seals state (subsequent release panics)
+    #[test]
+    #[should_panic(expected = "state is sealed")]
+    fn test_cancel_seals_state() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let depositor = Address::generate(&env);
+        let recipient = Address::generate(&env);
+        let arbiter = Address::generate(&env);
+        let (token_id, _token) = create_token(&env, &depositor);
+        StellarAssetClient::new(&env, &token_id).mint(&depositor, &1_000);
+        let contract_id = env.register_contract(None, EscrowContract);
+        let client = EscrowContractClient::new(&env, &contract_id);
+        let expiry = env.ledger().timestamp() + EXPIRY_OFFSET;
+        client.initialize(&depositor, &recipient, &arbiter, &token_id, &500, &expiry);
+        client.cancel(&depositor, &arbiter);
+        client.release(&arbiter);
+    }
+
+    // 20. cancel requires both auths (only depositor auth should panic)
+    #[test]
+    #[should_panic(expected = "authorization")]
+    fn test_cancel_requires_both_auths() {
+        let env = Env::default();
+        let depositor = Address::generate(&env);
+        let recipient = Address::generate(&env);
+        let arbiter = Address::generate(&env);
+        let (token_id, _token) = create_token(&env, &depositor);
+        StellarAssetClient::new(&env, &token_id).mint(&depositor, &1_000);
+        let contract_id = env.register_contract(None, EscrowContract);
+        let client = EscrowContractClient::new(&env, &contract_id);
+        let expiry = env.ledger().timestamp() + EXPIRY_OFFSET;
+        env.mock_all_auths();
+        client.initialize(&depositor, &recipient, &arbiter, &token_id, &500, &expiry);
+        env.mock_all_auths_allowing_non_root_auth();
+        client.cancel(&depositor, &arbiter);
+    }
+
+    // 21. cancel succeeds before expiry (no expiry dependency)
+    #[test]
+    fn test_cancel_before_expiry_succeeds() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let depositor = Address::generate(&env);
+        let recipient = Address::generate(&env);
+        let arbiter = Address::generate(&env);
+        let (token_id, token) = create_token(&env, &depositor);
+        StellarAssetClient::new(&env, &token_id).mint(&depositor, &1_000);
+        let contract_id = env.register_contract(None, EscrowContract);
+        let client = EscrowContractClient::new(&env, &contract_id);
+        let expiry = env.ledger().timestamp() + EXPIRY_OFFSET;
+        client.initialize(&depositor, &recipient, &arbiter, &token_id, &500, &expiry);
+        client.cancel(&depositor, &arbiter);
+        assert_eq!(token.balance(&depositor), 1_000);
+    }
 }

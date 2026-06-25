@@ -17,7 +17,7 @@
  *
  * ### Coverage Configuration
  * Coverage is measured using the V8 engine (the default and most reliable provider).
- * - **include**: Only the `backend/**/*.ts` files are instrumented for coverage.
+ * - include: Only the `backend` TypeScript files are instrumented for coverage.
  * - **exclude**: `config.ts` and `agent.ts` are excluded because:
  *   - `config.ts` is entirely mocked in all tests (coverage would be misleading).
  *   - `agent.ts` is a thin orchestrator that delegates to tools; its logic is tested
@@ -47,8 +47,9 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
-    // Discover all test files under tests/
+    // Discover all test files under tests/ (excludes e2e — use npm run test:e2e)
     include: ["tests/**/*.test.ts"],
+    exclude: ["tests/e2e/**"],
     // Each test file runs in its own isolated context — prevents mock bleed
     isolate: true,
     // restoreMocks: true automatically calls vi.restoreAllMocks() after every test to restore original implementations

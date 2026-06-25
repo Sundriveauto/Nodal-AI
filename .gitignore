@@ -9,3 +9,6 @@ contracts/escrow/test_snapshots/
 .env.development.local
 .env.test.local
 .env.production.local
+
+# Track TypeScript/Vitest snapshot files explicitly
+!tests/__snapshots__/

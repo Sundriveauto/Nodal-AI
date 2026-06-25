@@ -151,6 +151,52 @@ We are actively participating in the **Stellar Wave** program! We welcome contri
 
 ---
 
+## Examples
+
+Three runnable scripts in `scripts/examples/` demonstrate each `TaskType` with real payloads. Copy `.env.example` to `.env` and fill in your values, then run any script with:
+
+```bash
+npx ts-node scripts/examples/<script>.ts
+```
+
+### `send_xlm.ts` — stellar_payment
+
+Sends 1 XLM to a recipient account on testnet.
+
+```bash
+npx ts-node scripts/examples/send_xlm.ts
+```
+
+### `invoke_escrow.ts` — soroban_invoke
+
+Calls `get_state` on a deployed escrow contract (simulate-only, no broadcast). Pass the contract address via `CONTRACT_ID`:
+
+```bash
+CONTRACT_ID=C... npx ts-node scripts/examples/invoke_escrow.ts
+```
+
+### `respond_x402.ts` — x402_respond
+
+Responds to a sample x402 payment challenge and prints the resulting `X402PaymentProof`.
+
+```bash
+npx ts-node scripts/examples/respond_x402.ts
+```
+
+---
+
+## E2E Tests
+
+End-to-end tests run against the live Stellar testnet (not mocked). They require network access to Friendbot and Soroban RPC.
+
+```bash
+npm run test:e2e
+```
+
+The E2E suite is excluded from the default `npm run test` to keep CI fast. Run it separately before releases or after SDK upgrades.
+
+---
+
 ## License
 
 Released under the [MIT License](LICENSE).
@@ -161,6 +207,86 @@ _Built for the Stellar ecosystem by [Dami24-hub]._
 
 ````
 
+## API Reference
+
+### PayFiAgent
+
+The primary integration surface for developers. Dispatch tasks to the agent via `run()` or `runSequence()`.
+
+| Method | Input | Output | Description |
+|--------|-------|--------|-------------|
+| `run(task)` | `AgentTask` | `Promise<AgentResult>` | Execute a single task. Routes to the appropriate tool based on task type. |
+| `runSequence(tasks)` | `AgentTask[]` | `Promise<AgentResult[]>` | Execute an ordered list of tasks sequentially, stopping on first failure. |
+| `destroy()` | — | `void` | Detach all event listeners and release resources. Call when decommissioning the agent. |
+
+### TaskType
+
+```typescript
+type TaskType = "stellar_payment" | "soroban_invoke" | "x402_respond"
+```
+
+| Value | Description |
+|-------|-------------|
+| `stellar_payment` | Native XLM or custom asset payment via Horizon |
+| `soroban_invoke` | Smart contract invocation via Soroban RPC with simulation |
+| `x402_respond` | Respond to an x402 payment challenge with spending limit guard |
+
+### AgentTask
+
+```typescript
+interface AgentTask {
+  type: TaskType;
+  payload: unknown;
+}
+```
+
+Input wrapper for task dispatch. The `payload` shape depends on `type`:
+- `stellar_payment`: `{ destination: string; amount: string; assetCode?: string; assetIssuer?: string; memo?: string }`
+- `soroban_invoke`: `{ contractId: string; method: string; args: SorobanValue[]; ... }`
+- `x402_respond`: `{ resource: string; amount: string; assetCode?: string; assetIssuer?: string; payTo: string; nonce: string; expiresAt: string }`
+
+### AgentResult
+
+```typescript
+interface AgentResult {
+  success: boolean;
+  taskType: TaskType;
+  data?: unknown;
+  error?: string;
+}
+```
+
+Task execution result. On success, `data` contains the tool's output. On failure, `error` is populated.
+
+### Usage Example
+
+```typescript
+import { PayFiAgent } from "./backend/agent";
+
+const agent = new PayFiAgent();
+
+// Execute a Stellar payment
+const result = await agent.run({
+  type: "stellar_payment",
+  payload: {
+    destination: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+    amount: "100",
+    assetCode: "USDC",
+    assetIssuer: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+  },
+});
+
+if (result.success) {
+  console.log("Payment settled:", result.data);
+} else {
+  console.error("Payment failed:", result.error);
+}
+
+// Clean up
+agent.destroy();
+```
+
+---
 
 ## x402 Payment Flow
 

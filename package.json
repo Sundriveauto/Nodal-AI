@@ -12,6 +12,7 @@
     "test:ts:coverage": "vitest run --coverage",
     "test:rust": "cargo test --manifest-path contracts/escrow/Cargo.toml",
     "test:rust:coverage": "cargo tarpaulin --manifest-path contracts/escrow/Cargo.toml --out Html --output-dir coverage/rust",
+    "test:e2e": "vitest run tests/e2e/**",
     "test:all": "npm run test:rust && npm run test:ts",
     "lint": "eslint backend/**/*.ts tests/**/*.ts",
     "audit": "npm audit --audit-level=high",

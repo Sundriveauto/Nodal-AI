@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { execSync } from "child_process";
+import { formatValidationErrors } from "../backend/config";
+import { z } from "zod";
 
 vi.mock("child_process", async () => {
   const original = await vi.importActual<any>("child_process");
@@ -100,5 +102,62 @@ describe("config.ts startup validation", () => {
     expect(stderrSpy).toHaveBeenCalledWith(
       expect.stringContaining("AGENT_SECRET_KEY is not a valid Stellar secret key")
     );
+  });
+});
+
+describe("formatValidationErrors", () => {
+  it("redacts a valid S-key in error message", () => {
+    const error = new z.ZodError([
+      {
+        code: "custom",
+        path: ["test_field"],
+        message: "Invalid secret: SBVXQEODSNZVTESUCAAWZ45FI63OWNADBNRUERMXPU4XODQ47B4PMVAT",
+        fatal: false,
+      },
+    ]);
+    const result = formatValidationErrors(error);
+    expect(result).toContain("[REDACTED]");
+    expect(result).not.toContain("SBVXQEODSNZVTESUCAAWZ45FI63OWNADBNRUERMXPU4XODQ47B4PMVAT");
+  });
+
+  it("does not modify error message without S-key", () => {
+    const error = new z.ZodError([
+      {
+        code: "custom",
+        path: ["field"],
+        message: "This is a normal error",
+        fatal: false,
+      },
+    ]);
+    const result = formatValidationErrors(error);
+    expect(result).toContain("This is a normal error");
+  });
+
+  it("redacts S-key in path field", () => {
+    const error = new z.ZodError([
+      {
+        code: "custom",
+        path: ["SBVXQEODSNZVTESUCAAWZ45FI63OWNADBNRUERMXPU4XODQ47B4PMVAT"],
+        message: "Invalid config",
+        fatal: false,
+      },
+    ]);
+    const result = formatValidationErrors(error);
+    expect(result).toContain("[REDACTED]");
+    expect(result).not.toContain("SBVXQEODSNZVTESUCAAWZ45FI63OWNADBNRUERMXPU4XODQ47B4PMVAT");
+  });
+
+  it("redacts multiple S-keys in one message", () => {
+    const error = new z.ZodError([
+      {
+        code: "custom",
+        path: ["field"],
+        message: "Key1: SBVXQEODSNZVTESUCAAWZ45FI63OWNADBNRUERMXPU4XODQ47B4PMVAT and Key2: SBVXQEODSNZVTESUCAAWZ45FI63OWNADBNRUERMXPU4XODQ47B4PMVAY",
+        fatal: false,
+      },
+    ]);
+    const result = formatValidationErrors(error);
+    expect(result.match(/\[REDACTED\]/g)).toHaveLength(2);
+    expect(result).not.toContain("SBVXQEODSNZVTESUCAAWZ45FI63OWNADBNRUERMXPU4XODQ47B4PMVAT");
   });
 });

@@ -122,17 +122,32 @@ export async function withRetry<T>(
   );
 }
 
+// ─── Timeout wrapper ──────────────────────────────────────────────────────────
+
+/**
+ * Wraps a promise in a race against a timeout.
+ * Throws TimeoutError if the promise does not resolve within `ms` milliseconds.
+ */
+export function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let id: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    id = setTimeout(() => reject(new TimeoutError(ms)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(id));
+}
+
 // ─── Horizon client ──────────────────────────────────────────────────────────
 
 /**
  * Horizon server instance client.
  *
  * @remarks
- * The `allowHttp` configuration flag is set to true only when `config.STELLAR_NETWORK` is not `"mainnet"`.
+ * The `allowHttp` configuration flag uses an explicit allowlist: only testnet and futurenet permit HTTP.
  * On mainnet, this client strictly enforces secure HTTPS connections to protect transaction transmission.
+ * This prevents misconfiguration (e.g., "Mainnet" with capital M) from enabling plaintext connections.
  */
 export const horizonServer = new Horizon.Server(config.HORIZON_URL, {
-  allowHttp: config.STELLAR_NETWORK !== "mainnet",
+  allowHttp: config.STELLAR_NETWORK === "testnet" || config.STELLAR_NETWORK === "futurenet",
 });
 
 /**
@@ -143,7 +158,10 @@ export const horizonServer = new Horizon.Server(config.HORIZON_URL, {
  * @throws An error if the account cannot be loaded after retries.
  */
 export async function loadAccount(publicKey: string) {
-  return withRetry(() => horizonServer.loadAccount(publicKey), config.MAX_RETRIES, config.RETRY_DELAY_MS, DEFAULT_IS_RETRYABLE);
+  return withTimeout(
+    withRetry(() => horizonServer.loadAccount(publicKey), config.MAX_RETRIES, config.RETRY_DELAY_MS, DEFAULT_IS_RETRYABLE),
+    config.RPC_TIMEOUT_MS
+  );
 }
 
 /**
@@ -182,12 +200,12 @@ export async function submitTransaction(tx: Transaction | FeeBumpTransaction) {
  * Soroban RPC server instance client.
  *
  * @remarks
- * The `allowHttp` flag is configured dynamically: it allows HTTP for local development and testnets,
- * but enforces HTTPS on mainnet. Caution: sending mainnet transaction payloads or queries over plain HTTP
+ * The `allowHttp` flag uses an explicit allowlist: only testnet and futurenet permit HTTP.
+ * On mainnet, HTTPS is enforced. Caution: sending mainnet transaction payloads or queries over plain HTTP
  * exposes sensitive network calls to eavesdropping or tampering.
  */
 export const sorobanServer = new rpc.Server(config.SOROBAN_RPC_URL, {
-  allowHttp: config.STELLAR_NETWORK !== "mainnet",
+  allowHttp: config.STELLAR_NETWORK === "testnet" || config.STELLAR_NETWORK === "futurenet",
 });
 
 /**
@@ -203,7 +221,10 @@ export const sorobanServer = new rpc.Server(config.SOROBAN_RPC_URL, {
  * @throws An error if simulation RPC call fails after retries.
  */
 export async function simulateSorobanTx(tx: Transaction) {
-  return withRetry(() => sorobanServer.simulateTransaction(tx), config.MAX_RETRIES, config.RETRY_DELAY_MS, DEFAULT_IS_RETRYABLE);
+  return withTimeout(
+    withRetry(() => sorobanServer.simulateTransaction(tx), config.MAX_RETRIES, config.RETRY_DELAY_MS, DEFAULT_IS_RETRYABLE),
+    config.RPC_TIMEOUT_MS
+  );
 }
 
 /**

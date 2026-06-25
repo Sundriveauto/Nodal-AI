@@ -124,6 +124,14 @@ const EnvSchema = z.object({
     .int()
     .min(100)
     .default(1500),
+
+  // Per-call RPC timeout in milliseconds.
+  // Defaults to RETRY_DELAY_MS * MAX_RETRIES * 2, computed post-parse.
+  RPC_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .min(100)
+    .optional(),
 });
 
 type RawEnv = z.infer<typeof EnvSchema>;
@@ -218,11 +226,16 @@ export interface AgentConfig {
   readonly agentKeypair: () => Keypair;
   readonly ALLOWED_X402_ORIGINS?: string;
   readonly AGENT_SECRET_KEY_ARN?: string;
+  /**
+   * Per-call RPC timeout in milliseconds.
+   * Defaults to RETRY_DELAY_MS * MAX_RETRIES * 2 when RPC_TIMEOUT_MS env var is absent.
+   */
+  readonly RPC_TIMEOUT_MS: number;
 }
 
 // ─── Loader ───────────────────────────────────────────────────────────────────
 
-function formatValidationErrors(errors: z.ZodError): string {
+export function formatValidationErrors(errors: z.ZodError): string {
   return errors.issues
     .map((issue) => {
       const field = issue.path.join(".") || "unknown";
@@ -332,9 +345,13 @@ function loadConfig(): AgentConfig {
   // ── Build the config object — secret key stays in closure only ────────────
   const { AGENT_SECRET_KEY: _secret, AGENT_PUBLIC_KEY: _rawPub, ...rest } = raw;
 
+  const rpcTimeoutMs =
+    raw.RPC_TIMEOUT_MS ?? raw.RETRY_DELAY_MS * raw.MAX_RETRIES * 2;
+
   const cfg: AgentConfig = {
     ...rest,
     AGENT_PUBLIC_KEY: derivedPublicKey,
+    RPC_TIMEOUT_MS: rpcTimeoutMs,
     // Secret is captured in closure; never on the object
     agentKeypair: () => Keypair.fromSecret(_secret),
   };

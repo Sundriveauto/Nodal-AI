@@ -6,7 +6,7 @@
 
 import { describe, it, expect, vi } from "vitest";
 import { ZodError, z } from "zod";
-import { withRetry, DEFAULT_IS_RETRYABLE, resolveNetworkPassphrase } from "../backend/rpc_client";
+import { withRetry, DEFAULT_IS_RETRYABLE, resolveNetworkPassphrase, withTimeout, TimeoutError } from "../backend/rpc_client";
 import { Networks } from "@stellar/stellar-sdk";
 
 vi.mock("../backend/utils/logger", () => ({
@@ -25,6 +25,7 @@ vi.mock("../backend/config", () => ({
     X402_ASSET_ISSUER: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
     MAX_RETRIES: 3,
     RETRY_DELAY_MS: 100,
+    RPC_TIMEOUT_MS: 9000,
   },
 }));
 
@@ -45,6 +46,14 @@ describe("resolveNetworkPassphrase", () => {
 
   it("throws for an unknown network string", () => {
     expect(() => resolveNetworkPassphrase("unknown")).toThrow("Unsupported network: unknown");
+  });
+
+  it("throws for empty string", () => {
+    expect(() => resolveNetworkPassphrase("")).toThrow("Unsupported network: ");
+  });
+
+  it("throws for undefined cast to string", () => {
+    expect(() => resolveNetworkPassphrase(undefined as any)).toThrow();
   });
 });
 
@@ -174,5 +183,27 @@ describe("withRetry", () => {
     const err = await expect(withRetry(fn, 3, 0)).rejects.toThrow();
     expect(err.name).toBe("StellarRPCError");
     expect(err.message).toContain("RPC call failed after 3 attempts");
+  });
+});
+
+// ─── withTimeout ──────────────────────────────────────────────────────────────
+
+describe("withTimeout", () => {
+  it("resolves when the promise completes before the timeout", async () => {
+    const fast = Promise.resolve("done");
+    await expect(withTimeout(fast, 500)).resolves.toBe("done");
+  });
+
+  it("throws TimeoutError when the promise exceeds the timeout", async () => {
+    const slow = new Promise<never>(() => {}); // never resolves
+    await expect(withTimeout(slow, 10)).rejects.toBeInstanceOf(TimeoutError);
+  });
+
+  it("TimeoutError message identifies it as a timeout, not a network error", async () => {
+    const slow = new Promise<never>(() => {});
+    const err = await withTimeout(slow, 10).catch((e) => e);
+    expect(err).toBeInstanceOf(TimeoutError);
+    expect(err.message).toMatch(/timeout/i);
+    expect(err.name).toBe("TimeoutError");
   });
 });

@@ -388,4 +388,81 @@ describe("StellarPaymentTool", () => {
       expect(tool.publicKey).toMatch(/^G[A-Z2-7]{55}$/);
     });
   });
+
+  // ── Network passphrase selection ────────────────────────────────────────────
+
+  describe("Network passphrase selection", () => {
+    it("uses Networks.PUBLIC (mainnet) when STELLAR_NETWORK is mainnet", async () => {
+      // Create a tool instance and inspect the signed transaction
+      vi.resetModules();
+      vi.mock("../backend/config", () => ({
+        config: {
+          STELLAR_NETWORK: "mainnet",
+          HORIZON_URL: "https://horizon.stellar.org",
+          SOROBAN_RPC_URL: "https://soroban-mainnet.stellar.org",
+          X402_ASSET_CODE: "USDC",
+          X402_ASSET_ISSUER: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+          MAX_RETRIES: 3,
+          RETRY_DELAY_MS: 100,
+          AGENT_PUBLIC_KEY: Keypair.fromSecret(TEST_SECRET).publicKey(),
+          agentKeypair: () => Keypair.fromSecret(TEST_SECRET),
+        },
+      }));
+
+      vi.mocked(rpcClient.loadAccount).mockResolvedValue(
+        makeMockAccount(Keypair.fromSecret(TEST_SECRET).publicKey()) as any
+      );
+      vi.mocked(rpcClient.submitTransaction).mockImplementation((xdr: string) => {
+        // Verify XDR contains mainnet network passphrase
+        expect(xdr).toContain("Public Global Stellar Network");
+        return Promise.resolve({ hash: "mainnet_tx", ledger: 100 } as any);
+      });
+
+      const mainnetTool = new StellarPaymentTool(TEST_SECRET);
+      const result = await mainnetTool.execute({
+        destination: VALID_DEST,
+        amount: "1",
+        assetCode: "XLM",
+      });
+
+      expect(result.txHash).toBe("mainnet_tx");
+      expect(rpcClient.submitTransaction).toHaveBeenCalled();
+    });
+
+    it("uses Networks.FUTURENET when STELLAR_NETWORK is futurenet", async () => {
+      vi.resetModules();
+      vi.mock("../backend/config", () => ({
+        config: {
+          STELLAR_NETWORK: "futurenet",
+          HORIZON_URL: "https://horizon-futurenet.stellar.org",
+          SOROBAN_RPC_URL: "https://soroban-futurenet.stellar.org",
+          X402_ASSET_CODE: "USDC",
+          X402_ASSET_ISSUER: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+          MAX_RETRIES: 3,
+          RETRY_DELAY_MS: 100,
+          AGENT_PUBLIC_KEY: Keypair.fromSecret(TEST_SECRET).publicKey(),
+          agentKeypair: () => Keypair.fromSecret(TEST_SECRET),
+        },
+      }));
+
+      vi.mocked(rpcClient.loadAccount).mockResolvedValue(
+        makeMockAccount(Keypair.fromSecret(TEST_SECRET).publicKey()) as any
+      );
+      vi.mocked(rpcClient.submitTransaction).mockImplementation((xdr: string) => {
+        // Verify XDR contains futurenet network passphrase
+        expect(xdr).toContain("Future Network");
+        return Promise.resolve({ hash: "futurenet_tx", ledger: 200 } as any);
+      });
+
+      const futureNetTool = new StellarPaymentTool(TEST_SECRET);
+      const result = await futureNetTool.execute({
+        destination: VALID_DEST,
+        amount: "1",
+        assetCode: "XLM",
+      });
+
+      expect(result.txHash).toBe("futurenet_tx");
+      expect(rpcClient.submitTransaction).toHaveBeenCalled();
+    });
+  });
 });
