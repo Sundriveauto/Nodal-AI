@@ -180,9 +180,9 @@ describe("withRetry", () => {
   it("last error is re-thrown after exhaustion with StellarRPCError", async () => {
     const fn = vi.fn().mockRejectedValue(new Error("Service Unavailable"));
 
-    const err = await expect(withRetry(fn, 3, 0)).rejects.toThrow();
-    expect(err.name).toBe("StellarRPCError");
-    expect(err.message).toContain("RPC call failed after 3 attempts");
+    const err = await withRetry(fn, 3, 0).catch((e: unknown) => e);
+    expect((err as Error).name).toBe("StellarRPCError");
+    expect((err as Error).message).toContain("RPC call failed after 3 attempts");
   });
 });
 

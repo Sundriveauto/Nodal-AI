@@ -7,6 +7,7 @@
 
 import {
   Keypair,
+  Transaction,
   TransactionBuilder,
   Operation,
   Contract,
@@ -75,6 +76,34 @@ export const SorobanInvokeInputSchema = z.object({
 
 export type SorobanInvokeInput = z.infer<typeof SorobanInvokeInputSchema>;
 
+// ─── Return type ──────────────────────────────────────────────────────────────
+
+/**
+ * Discriminated union return type for {@link SorobanInvokeTool.execute}.
+ * - When `simulateOnly=false`: `{ txHash: string }`
+ * - When `simulateOnly=true`:  `{ simulationResult: Transaction }`
+ */
+export type SorobanInvokeResult =
+  | { txHash: string; simulationResult?: never }
+  | { txHash?: never; simulationResult: Transaction };
+
+/**
+ * Type guard: narrows a `SorobanInvokeResult` to the simulation-only variant.
+ *
+ * @example
+ * ```ts
+ * const result = await tool.execute({ ..., simulateOnly: true });
+ * if (isSorobanSimulationResult(result)) {
+ *   console.log(result.simulationResult); // Transaction
+ * }
+ * ```
+ */
+export function isSorobanSimulationResult(
+  result: SorobanInvokeResult
+): result is { simulationResult: Transaction } {
+  return result.simulationResult !== undefined;
+}
+
 // ─── Tool implementation ──────────────────────────────────────────────────────
 
 export class SorobanInvokeTool {
@@ -125,7 +154,7 @@ export class SorobanInvokeTool {
    */
   async execute(
     rawInput: unknown
-  ): Promise<{ txHash?: string; simulationResult?: unknown }> {
+  ): Promise<SorobanInvokeResult> {
     const input = SorobanInvokeInputSchema.parse(rawInput);
 
     // 1. Resolve contract
@@ -168,7 +197,7 @@ export class SorobanInvokeTool {
 
     if (input.simulateOnly) {
       logger.info("Simulation passed (dry-run, not broadcasting)");
-      return { simulationResult: preparedTx };
+      return { simulationResult: preparedTx as Transaction };
     }
 
     // 5. Sign prepared transaction

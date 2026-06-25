@@ -71,7 +71,7 @@ export class X402PaymentTool {
       throw new Error(`x402 challenge expired at ${challenge.expiresAt}`);
     }
 
-    const { txHash } = await this.paymentTool.execute({
+    const { txHash, ledger } = await this.paymentTool.execute({
       destination: challenge.payTo,
       amount: challenge.amount,
       assetCode: challenge.assetCode,
@@ -81,13 +81,24 @@ export class X402PaymentTool {
       memo: createHash("sha256").update(challenge.nonce).digest("hex").slice(0, 28),
     });
 
+    // Derive signedAt from ledger close time so the proof timestamp is anchored
+    // to on-chain reality rather than the agent's wall clock.
+    let signedAt: string;
+    try {
+      const ledgerRecord = await this.horizonServer.ledgers().ledger(ledger).call();
+      signedAt = new Date((ledgerRecord as any).closed_at).toISOString();
+    } catch {
+      logger.warn("Failed to fetch ledger close time; falling back to wall clock", { ledger });
+      signedAt = new Date().toISOString();
+    }
+
     return {
       protocol: "x402",
       network: config.STELLAR_NETWORK,
       txHash,
       nonce: challenge.nonce,
       payer: this.keypair.publicKey(),
-      signedAt: new Date().toISOString(),
+      signedAt,
     };
   }
 

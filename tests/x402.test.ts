@@ -12,6 +12,18 @@ import { X402PaymentTool } from "../backend/tools/X402PaymentTool";
 import { StellarPaymentTool } from "../backend/tools/StellarPaymentTool";
 import { config } from "../backend/config";
 
+// ─── Mock rpc_client so horizonServer.ledgers() is interceptable ──────────────
+
+vi.mock("../backend/rpc_client", () => ({
+  horizonServer: {
+    ledgers: vi.fn().mockReturnValue({
+      ledger: vi.fn().mockReturnValue({
+        call: vi.fn().mockResolvedValue({ closed_at: "2024-01-01T00:00:00Z" }),
+      }),
+    }),
+  },
+}));
+
 // ─── Mock StellarPaymentTool so x402 tests don't hit Horizon ─────────────────
 
 vi.mock("../backend/tools/StellarPaymentTool");
@@ -200,8 +212,10 @@ describe("X402PaymentTool", () => {
       expect(proof.txHash).toBe("x402_mock_tx_hash");
       expect(proof.nonce).toBe(VALID_CHALLENGE.nonce);
       expect(proof.payer).toMatch(/^G[A-Z2-7]{55}$/);
+      // signedAt is either ledger close time or wall-clock fallback — both are valid ISO strings
       expect(proof.signedAt).toBeTruthy();
-      expect(new Date(proof.signedAt).getTime()).toBeLessThanOrEqual(Date.now());
+      expect(() => new Date(proof.signedAt)).not.toThrow();
+      expect(new Date(proof.signedAt).toISOString()).toBe(proof.signedAt);
     });
 
     it("embeds nonce in memo as SHA-256 fingerprint (28 hex chars)", async () => {

@@ -261,9 +261,10 @@ describe("SorobanInvokeTool", () => {
     });
 
     it("does NOT call sendTransaction when simulateOnly=true", async () => {
-      vi.mocked(rpcClient.prepareSorobanTx).mockResolvedValue({
-        sign: vi.fn(),
-      } as any);
+      const mockPreparedTx = { sign: vi.fn() };
+      vi.mocked(rpcClient.prepareSorobanTx).mockResolvedValue(
+        mockPreparedTx as any,
+      );
 
       const result = await tool.execute({
         contractId: VALID_CONTRACT,
@@ -273,7 +274,10 @@ describe("SorobanInvokeTool", () => {
       });
 
       expect(rpcClient.sorobanServer.sendTransaction).not.toHaveBeenCalled();
+      // Discriminated union: simulationResult must be present, txHash must be absent
       expect(result.simulationResult).toBeDefined();
+      expect(result.simulationResult).toBe(mockPreparedTx);
+      expect(result.txHash).toBeUndefined();
     });
   });
 

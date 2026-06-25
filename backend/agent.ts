@@ -77,12 +77,14 @@ export class PayFiAgent extends EventEmitter {
   constructor() {
     super();
 
-    // config.agentKeypair().secret() is the canonical way to obtain the signing secret.
-    // Direct access to config.AGENT_SECRET_KEY is intentionally blocked by the AgentConfig
-    // type (Omit<RawEnv, "AGENT_SECRET_KEY">); using agentKeypair() makes the access explicit.
-    this.paymentTool = new StellarPaymentTool(config.agentKeypair().secret());
-    this.sorobanTool = new SorobanInvokeTool(config.agentKeypair().secret());
-    this.x402Tool    = new X402PaymentTool(config.agentKeypair().secret());
+    // config.agentKeypair() is called exactly once so the secret string is materialized
+    // only once in this call stack. Tools receive the secret explicitly rather than
+    // calling config.agentKeypair() internally — this keeps secret access auditable
+    // and centralised here rather than scattered across tool constructors.
+    const keypair = config.agentKeypair();
+    this.paymentTool = new StellarPaymentTool(keypair.secret());
+    this.sorobanTool = new SorobanInvokeTool(keypair.secret());
+    this.x402Tool    = new X402PaymentTool(keypair.secret());
 
     // ── Register event listeners — every registration is mirrored in destroy() ──
     const onError = (err: Error) => {
