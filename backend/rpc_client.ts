@@ -10,6 +10,8 @@ import {
   rpc,
   Transaction,
   FeeBumpTransaction,
+  xdr,
+  StrKey,
 } from "@stellar/stellar-sdk";
 import { ZodError } from "zod";
 import { config } from "./config";
@@ -244,5 +246,29 @@ export async function prepareSorobanTx(tx: Transaction): Promise<Transaction> {
     throw new Error(`Soroban simulation failed: ${(simResult as any).error}`);
   }
 
-  return rpc.assembleTransaction(tx, simResult).build();
+  const preparedTx = rpc.assembleTransaction(tx, simResult).build();
+
+  const agentPublicKey = config.agentKeypair().publicKey();
+  for (const op of preparedTx.operations) {
+    const auth = (op as any).auth as xdr.SorobanAuthorizationEntry[] | undefined;
+    if (!auth) continue;
+    for (const entry of auth) {
+      const credTypeValue = entry.credentials().switch();
+      if (credTypeValue === xdr.SorobanCredentialsType.sorobanCredentialsAddress()) {
+        const addressCred = entry.credentials().address();
+        const scAddress = addressCred.address();
+        if (scAddress.switch() === xdr.ScAddressType.scAddressTypeAccount()) {
+          const rawKey = scAddress.accountId().ed25519();
+          const addressStr = StrKey.encodeEd25519PublicKey(rawKey);
+          if (addressStr !== agentPublicKey) {
+            throw new Error(
+              `Unexpected auth signer: ${addressStr}. Only the agent keypair or current contract are allowed.`
+            );
+          }
+        }
+      }
+    }
+  }
+
+  return preparedTx;
 }
