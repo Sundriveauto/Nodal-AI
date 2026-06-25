@@ -40,6 +40,8 @@ export interface X402PaymentProof {
 // ─── Tool implementation ──────────────────────────────────────────────────────
 
 export class X402PaymentTool {
+  // TODO: persist to Redis for multi-instance deployments
+  private usedNonces = new Set<string>();
   private paymentTool: StellarPaymentTool;
   private keypair: Keypair;
   private horizonServer: Horizon.Server;
@@ -71,7 +73,11 @@ export class X402PaymentTool {
       throw new Error(`x402 challenge expired at ${challenge.expiresAt}`);
     }
 
-    const { txHash, ledger } = await this.paymentTool.execute({
+    if (this.usedNonces.has(challenge.nonce)) {
+      throw new Error("x402: nonce already used");
+    }
+
+    const { txHash } = await this.paymentTool.execute({
       destination: challenge.payTo,
       amount: challenge.amount,
       assetCode: challenge.assetCode,
@@ -81,16 +87,7 @@ export class X402PaymentTool {
       memo: createHash("sha256").update(challenge.nonce).digest("hex").slice(0, 28),
     });
 
-    // Derive signedAt from ledger close time so the proof timestamp is anchored
-    // to on-chain reality rather than the agent's wall clock.
-    let signedAt: string;
-    try {
-      const ledgerRecord = await this.horizonServer.ledgers().ledger(ledger).call();
-      signedAt = new Date((ledgerRecord as any).closed_at).toISOString();
-    } catch {
-      logger.warn("Failed to fetch ledger close time; falling back to wall clock", { ledger });
-      signedAt = new Date().toISOString();
-    }
+    this.usedNonces.add(challenge.nonce);
 
     return {
       protocol: "x402",

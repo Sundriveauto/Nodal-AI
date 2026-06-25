@@ -27,6 +27,33 @@ vi.mock("../backend/tools/X402PaymentTool", () => ({
   })),
 }));
 
+vi.mock("../backend/tools/AccountInfoTool", () => ({
+  AccountInfoTool: vi.fn().mockImplementation(() => ({
+    fetch: vi.fn(),
+  })),
+}));
+
+vi.mock("../backend/tools/TrustlineTool", () => ({
+  TrustlineTool: vi.fn().mockImplementation(() => ({
+    execute: vi.fn(),
+    checkTrustline: vi.fn(),
+  })),
+}));
+
+vi.mock("../backend/tools/MultiSigPaymentTool", () => ({
+  MultiSigPaymentTool: vi.fn().mockImplementation(() => ({
+    execute: vi.fn(),
+  })),
+}));
+
+vi.mock("../backend/rpc_client", () => ({
+  loadAccount: vi.fn(),
+  submitTransaction: vi.fn(),
+  horizonServer: { payments: vi.fn(() => ({ forAccount: vi.fn(() => ({ stream: vi.fn() })) })) },
+  sorobanServer: {},
+  resolveNetworkPassphrase: vi.fn(() => "Public Global Stellar Network ; September 2015"),
+}));
+
 vi.mock("../backend/config", () => ({
   config: {
     STELLAR_NETWORK: "mainnet",

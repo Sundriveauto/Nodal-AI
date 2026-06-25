@@ -15,14 +15,24 @@ import { config, MAINNET_SPENDING_CAP } from "./config";
 import { logger } from "./logger";
 import { StellarPaymentTool } from "./tools/StellarPaymentTool";
 import { SorobanInvokeTool } from "./tools/SorobanInvokeTool";
-import { X402PaymentTool } from "./tools/X402PaymentTool";
+import { X402PaymentTool, X402Challenge } from "./tools/X402PaymentTool";
+import { AccountInfoTool } from "./tools/AccountInfoTool";
+import { TrustlineTool } from "./tools/TrustlineTool";
+import { MultiSigPaymentTool } from "./tools/MultiSigPaymentTool";
+import { horizonServer } from "./rpc_client";
 import { createLogger, generateCorrelationId } from "./utils/logger";
 
 const log = createLogger("orchestrator");
 
 // ─── Task types ───────────────────────────────────────────────────────────────
 
-export type TaskType = "stellar_payment" | "soroban_invoke" | "x402_respond";
+export type TaskType =
+  | "stellar_payment"
+  | "soroban_invoke"
+  | "x402_respond"
+  | "account_info"
+  | "change_trust"
+  | "multisig_payment";
 
 export interface AgentTask {
   type: TaskType;
@@ -66,9 +76,13 @@ export class PayFiAgent extends EventEmitter {
   private paymentTool: StellarPaymentTool;
   private sorobanTool: SorobanInvokeTool;
   private x402Tool: X402PaymentTool;
+  private accountInfoTool: AccountInfoTool;
+  private trustlineTool: TrustlineTool;
+  private multiSigTool: MultiSigPaymentTool;
 
   private activeTasks = 0;
   private isDraining = false;
+  private _streamStop: (() => void) | null = null;
 
   // Bound handler references kept so destroy() can call .off() with the exact same function
   // reference — EventEmitter requires identity equality for removal.
@@ -77,14 +91,15 @@ export class PayFiAgent extends EventEmitter {
   constructor() {
     super();
 
-    // config.agentKeypair() is called exactly once so the secret string is materialized
-    // only once in this call stack. Tools receive the secret explicitly rather than
-    // calling config.agentKeypair() internally — this keeps secret access auditable
-    // and centralised here rather than scattered across tool constructors.
-    const keypair = config.agentKeypair();
-    this.paymentTool = new StellarPaymentTool(keypair.secret());
-    this.sorobanTool = new SorobanInvokeTool(keypair.secret());
-    this.x402Tool    = new X402PaymentTool(keypair.secret());
+    // config.agentKeypair().secret() is the canonical way to obtain the signing secret.
+    // Direct access to config.AGENT_SECRET_KEY is intentionally blocked by the AgentConfig
+    // type (Omit<RawEnv, "AGENT_SECRET_KEY">); using agentKeypair() makes the access explicit.
+    this.paymentTool = new StellarPaymentTool(config.agentKeypair().secret());
+    this.sorobanTool = new SorobanInvokeTool(config.agentKeypair().secret());
+    this.x402Tool    = new X402PaymentTool(config.agentKeypair().secret());
+    this.accountInfoTool = new AccountInfoTool();
+    this.trustlineTool = new TrustlineTool(config.agentKeypair().secret());
+    this.multiSigTool = new MultiSigPaymentTool(config.agentKeypair().secret());
 
     // ── Register event listeners — every registration is mirrored in destroy() ──
     const onError = (err: Error) => {
@@ -118,6 +133,47 @@ export class PayFiAgent extends EventEmitter {
   }
 
   /**
+   * Start polling the Horizon payment stream for incoming x402 challenges.
+   * Calls onChallenge for each payment whose memo starts with "x402:".
+   */
+  startListening(resourceUrl: string, onChallenge: (challenge: X402Challenge) => void): void {
+    if (this._streamStop) return; // already listening
+
+    const closeStream = horizonServer
+      .payments()
+      .forAccount(config.AGENT_PUBLIC_KEY)
+      .stream({
+        onmessage: (payment: any) => {
+          const memo: string = payment.memo ?? "";
+          if (!memo.startsWith("x402:")) return;
+          try {
+            const challenge: X402Challenge = JSON.parse(
+              Buffer.from(memo.slice(5), "base64").toString("utf8")
+            );
+            onChallenge(challenge);
+          } catch {
+            // Malformed memo — ignore
+          }
+        },
+        onerror: (event: MessageEvent) => {
+          logger.warn("Payment stream error", { error: String(event) });
+        },
+      });
+
+    this._streamStop = closeStream as unknown as () => void;
+    logger.info("Payment stream started", { resourceUrl });
+  }
+
+  /** Stop the active Horizon payment stream subscription. */
+  stopListening(): void {
+    if (this._streamStop) {
+      this._streamStop();
+      this._streamStop = null;
+      logger.info("Payment stream stopped");
+    }
+  }
+
+  /**
    * Detach all registered event listeners and release internal resources.
    *
    * Must be called by the lifecycle manager when an agent instance is
@@ -131,6 +187,7 @@ export class PayFiAgent extends EventEmitter {
    *   agent.destroy(); // call when decommissioning
    */
   destroy(): void {
+    this.stopListening();
     for (const [event, handler] of this._boundHandlers) {
       this.off(event, handler);
     }
@@ -212,6 +269,18 @@ export class PayFiAgent extends EventEmitter {
           data = await this.x402Tool.respond(task.payload);
           break;
         }
+
+        case "account_info":
+          data = await this.accountInfoTool.fetch();
+          break;
+
+        case "change_trust":
+          data = await this.trustlineTool.execute(task.payload);
+          break;
+
+        case "multisig_payment":
+          data = await this.multiSigTool.execute(task.payload);
+          break;
 
         default:
           throw new Error(`Unknown task type: ${(task as AgentTask).type}`);
