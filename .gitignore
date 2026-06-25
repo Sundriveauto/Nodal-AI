@@ -10,5 +10,5 @@ contracts/escrow/test_snapshots/
 .env.test.local
 .env.production.local
 
-# Track TypeScript/Vitest snapshot files explicitly
-!tests/__snapshots__/
+# Vitest snapshot files — auto-generated, do not commit
+tests/__snapshots__/

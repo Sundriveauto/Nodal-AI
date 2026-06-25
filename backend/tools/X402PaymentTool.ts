@@ -95,7 +95,7 @@ export class X402PaymentTool {
       txHash,
       nonce: challenge.nonce,
       payer: this.keypair.publicKey(),
-      signedAt: new Date().toISOString(),
+      signedAt,
     };
   }
 
