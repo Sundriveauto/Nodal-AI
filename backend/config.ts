@@ -99,7 +99,24 @@ const EnvSchema = z.object({
   X402_ASSET_CODE: z.string().min(1).max(12).default("USDC"),
   X402_ASSET_ISSUER: z
     .string({ required_error: "X402_ASSET_ISSUER is required" })
-    .length(56, "X402_ASSET_ISSUER must be a 56-character Stellar address"),
+    .length(56, "X402_ASSET_ISSUER must be a 56-character Stellar address")
+    .refine((val) => val.startsWith("G"), {
+      message: "X402_ASSET_ISSUER must start with G",
+    })
+    .refine(
+      (val) => {
+        try {
+          Keypair.fromPublicKey(val);
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      {
+        message:
+          "X402_ASSET_ISSUER is not a valid Ed25519 public key",
+      }
+    ),
   ALLOWED_X402_ORIGINS: z.string().optional(),
 
   // Spending cap
