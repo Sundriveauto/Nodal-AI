@@ -433,7 +433,7 @@ describe("StellarPaymentTool", () => {
       vi.mocked(rpcClient.loadAccount).mockResolvedValue(
         makeMockAccount(Keypair.fromSecret(TEST_SECRET).publicKey()) as any
       );
-      vi.mocked(rpcClient.submitTransaction).mockImplementation((xdr: string) => {
+      vi.mocked(rpcClient.submitTransaction).mockImplementation((xdr: any) => {
         // Verify XDR contains mainnet network passphrase
         expect(xdr).toContain("Public Global Stellar Network");
         return Promise.resolve({ hash: "mainnet_tx", ledger: 100 } as any);
@@ -469,7 +469,7 @@ describe("StellarPaymentTool", () => {
       vi.mocked(rpcClient.loadAccount).mockResolvedValue(
         makeMockAccount(Keypair.fromSecret(TEST_SECRET).publicKey()) as any
       );
-      vi.mocked(rpcClient.submitTransaction).mockImplementation((xdr: string) => {
+      vi.mocked(rpcClient.submitTransaction).mockImplementation((xdr: any) => {
         // Verify XDR contains futurenet network passphrase
         expect(xdr).toContain("Future Network");
         return Promise.resolve({ hash: "futurenet_tx", ledger: 200 } as any);
